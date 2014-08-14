@@ -1,0 +1,932 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="regsamp_mod"?>
+<zk>
+<zscript>
+<![CDATA[
+MYVERSION="0.3d";
+/*
+Title		: i-test register samples and assign tests
+Written by	: Victor Wong
+
+Revisions:
+
+20/03/2012: started
+
+TODO: add to-be-used-in-itest flag in testpackages - filter out testpacks for elb or itest
+
+05/12/2012: uses customer.newfield9 for customer-prefix. to be used when generating COC -- eg, IDS1,FAM2 and so on.
+
+*/
+/*
+import java.util.*;
+import java.text.*;
+import java.lang.Float;
+import groovy.sql.Sql;
+import org.zkoss.zk.ui.*;
+import org.zkoss.zk.zutl.*;
+*/
+import org.victor.*;
+
+sechand = new SecurityFuncs();
+itest_useraccessobj = sechand.itest_getUserAccessObject();
+if(itest_useraccessobj == null) Executions.sendRedirect("index.zul");
+
+myincludeid = Executions.getCurrent().getParameter("myid");
+
+Generals kiboo = new Generals();
+GridHandler gridhand = new GridHandler();
+ListboxHandler lbhandler = new ListboxHandler();
+SqlFuncs sqlhand = new SqlFuncs();
+GuiFuncs guihand = new GuiFuncs();
+
+FOLDERPICK_COLOR = "background:#910b0b";
+OVERDUE_ROWCOLOR = "background:#F74623";
+RELEASED_ROWCOLOR = "background:#AEF520";
+
+MAXSAMPLES = 100;
+
+DEMO_ARCODE = "300L/005"; // IDS ar_code
+DEMO_PREFIX = "IDS";
+
+int glob_sample_line = 1; // keep track on sample-row making
+int glob_sample_numlines = 0; // keep track on number of rows of sample added/deleted
+
+Object prevSelectedSample = null;
+String prevSelectedSample_style = "";
+
+Object global_samples_grid = null;
+Object glob_selected_samprow = null;
+glob_samprow_id = "";
+
+glob_selected_folderno = "";
+glob_selected_folder_status = "";
+last_listfolder_type = 0;
+
+boolean glob_dirtyflag = false; // used to determine whether to save samples+tests or not
+
+Object company_Record = null;
+
+// reset all global vars--
+void resetGlobalVars()
+{
+	glob_sample_line = 1;
+	glob_sample_numlines = 0;
+
+	Object prevSelectedSample = null;
+	String prevSelectedSample_style = "";
+
+	Object global_samples_grid = null;
+	Object glob_selected_samprow = null;
+	glob_samprow_id = "";
+
+	glob_selected_folderno = "";
+	glob_selected_folder_status = "";
+
+	glob_dirtyflag = false;
+}
+
+void disableButts(boolean iwhat)
+{
+	//cancelfolder_butt.setDisabled(iwhat);
+	commitfolder_butt.setDisabled(iwhat);
+	//printfolder_butt.setDisabled(iwhat);
+
+	updatefolder_butt.setDisabled(iwhat);
+
+	addsamp_butt.setDisabled(iwhat);
+	remsamp_butt.setDisabled(iwhat);
+	savelist_butt.setDisabled(iwhat);
+	picktest_butt.setDisabled(iwhat);
+	remtest_butt.setDisabled(iwhat);
+
+	// show or not
+	miko = (iwhat) ? false : true; // flip
+	updatefolder_butt.setVisible(miko);
+	addsamp_butt.setVisible(miko);
+	remsamp_butt.setVisible(miko);
+	savelist_butt.setVisible(miko);
+	picktest_butt.setVisible(miko);
+	remtest_butt.setVisible(miko);
+}
+
+class sampItemOnSelect implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		selrow = event.getTarget();
+
+		glob_selected_samprow = selrow;
+		kkk = selrow.getId();
+		glob_samprow_id = kkk.substring(3,kkk.length());
+
+		if(prevSelectedSample != null)
+		{
+			if(prevSelectedSample != selrow)
+			{
+				if(prevSelectedSample_style.equals(""))
+					prevSelectedSample.setStyle(null);
+				else
+					prevSelectedSample.setStyle(prevSelectedSample_style);
+			}
+			else
+				return; // selected same as previous, return - don't waste cpu
+		}
+
+		prevSelectedSample_style = (selrow.getStyle() == null) ? "" : selrow.getStyle();
+		prevSelectedSample = selrow;
+		selrow.setStyle(FOLDERPICK_COLOR);
+		//selid = selrow.getId();
+		//selid = selid.substring(2,selid.length());
+	}
+}
+
+String[] reqitemHeader = { "", "SampleID", "SampleMarking" };
+String[] reqitemHdWid = { "40px","180px","99%" };
+
+void addSamples()
+{
+	if(samples_holder.getFellowIfAny("samples_grid") == null)
+	{
+		// create the grid and rows
+		thegrid = new Grid();
+		thegrid.setId("samples_grid");
+		gridrows = gridhand.gridMakeRows("","",thegrid);
+		gridhand.makeGridHeaderColumns_Width(reqitemHeader, reqitemHdWid, thegrid);
+		thegrid.setParent(samples_holder);
+		global_samples_grid = gridrows; // later usage
+	}
+
+	sampline = glob_sample_line.toString();
+
+	samprowid = "smp" + sampline;
+	testdivid = "tst" + sampline;
+
+	// update glob vars
+	glob_sample_line++;
+	glob_sample_numlines++;
+
+	newrow = gridhand.gridMakeRow(samprowid,"","",global_samples_grid);
+	newrow.addEventListener("onClick", new sampItemOnSelect());
+
+	smpid_tb = gridhand.makeTextboxToParent("","","100%","",false,newrow);
+	smpmk_tb = gridhand.makeTextboxToParent("","","100%","30px",true,newrow);
+
+	smpid_id = "sid" + sampline;
+	smpmk_id = "smk" + sampline;
+
+	smpid_tb.setId(smpid_id);
+	smpmk_tb.setId(smpmk_id);
+
+	// use Detail in grid->row for better organizing the stuff
+	Detail deting = new Detail();
+	deting.setOpen(true);
+	deting.setParent(newrow);
+	newdiv = new Div(); // holder to sample->tests lb
+	newdiv.setId(testdivid);
+	newdiv.setParent(deting);
+
+	glob_dirtyflag = true;
+}
+
+// tests picker funcs - will pick from testpackages based on ar_code (as def for a customer)
+
+Object[] tptests_lb_headers = {
+	new listboxHeaderWidthObj("Tests",true,""),
+	new listboxHeaderWidthObj("Method",true,"100px"),
+	new listboxHeaderWidthObj("mysoftc",false,""),
+	new listboxHeaderWidthObj("tpid",false,""),
+};
+
+Object[] tp_lb_headers = {
+	new listboxHeaderWidthObj("origid",false,""),
+	new listboxHeaderWidthObj("Test package",true,""),
+	//new listboxHeaderObj("LastUpdate",true),
+	//new listboxHeaderObj("UpdatedBy",true),
+};
+
+void showTestPackage_Tests(String itpid)
+{
+	Listbox newlb = lbhandler.makeVWListbox_Width(testpicker_holder, tptests_lb_headers, "picktests_lb", 8);
+
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null ) return;
+
+	sqlstm = "select smd.description,smd.description2,tpi.mysoftcode, tpi.testpackage_id from stockmasterdetails smd " +
+	"left join testpackage_items tpi on tpi.mysoftcode = smd.id " +
+	"where tpi.testpackage_id=" + itpid;
+
+	trecs = sql.rows(sqlstm);
+	sql.close();
+	if(trecs.size() == 0) return;
+
+	newlb.setCheckmark(true);
+	newlb.setMultiple(true);
+
+	for(dpi : trecs)
+	{
+		ArrayList kabom = new ArrayList();
+		kabom.add(dpi.get("description"));
+		kabom.add(dpi.get("description2"));
+
+		kabom.add(dpi.get("mysoftcode").toString());
+		kabom.add(dpi.get("testpackage_id").toString());
+
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhandler.insertListItems(newlb,strarray,"false","font-size:9px");
+	}
+}
+
+// pickTests() onSelect()
+class tpOnSelect implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		selitem = testpackages_lb.getSelectedItem();
+		tpid = lbhandler.getListcellItemLabel(selitem,0);
+		showTestPackage_Tests(tpid);
+	}
+}
+
+void pickTests()
+{
+	if(glob_selected_samprow == null) return;
+
+	// update test-packages side
+	Listbox tpnewlb = lbhandler.makeVWListbox(testpackages_holder, tp_lb_headers, "testpackages_lb",8);
+
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null ) return;
+
+	//sqlstm = "select origid,package_name,lastupdate,username from testpackages where deleted=0 and itestuse=1 and ar_code='" + DEMO_ARCODE + "'";
+	sqlstm = "select origid,package_name from testpackages where deleted=0 and itestuse=1 and ar_code='" + DEMO_ARCODE + "'";
+	trecs = sql.rows(sqlstm);
+	sql.close();
+	if(trecs.size() == 0) return;
+
+	//tpnewlb.setRows(8);
+	tpnewlb.addEventListener("onClick", new tpOnSelect());
+
+	// update test-packages list
+	for(dpi : trecs)
+	{
+		ArrayList kabom = new ArrayList();
+		kabom.add(dpi.get("origid").toString());
+		kabom.add(dpi.get("package_name"));
+
+		//kabom.add(dpi.get("lastupdate").toString().substring(0,10));
+		//kabom.add(dpi.get("username"));
+
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhandler.insertListItems(tpnewlb,strarray,"false","font-size:10px");
+	}
+
+	picktest_popup.open(glob_selected_samprow);
+}
+
+Object[] pktests_lb_headers = {
+	new listboxHeaderObj("Tests",true),
+	new listboxHeaderObj("Method",true),
+	new listboxHeaderObj("mysoftc",false),
+	new listboxHeaderObj("tpid",false),
+};
+
+// glob_selected_samprow
+void pickTickedTests()
+{
+
+	if(testpicker_holder.getFellowIfAny("picktests_lb") == null) return;
+	if(picktests_lb.getSelectedCount() == 0) return;
+
+	tickeds = picktests_lb.getSelectedItems();
+	testdivid = "tst" + glob_samprow_id;
+	testdiv = samples_grid.getFellowIfAny(testdivid);
+	lbid = "samptst_lb" + glob_samprow_id;
+	//alert(glob_selected_samprow.getId() + " :: " + testdivid + " :: " + lbid);
+
+	Listbox newlb;
+
+	if(testdiv.getFellowIfAny(lbid) == null)
+		newlb = lbhandler.makeVWListbox(testdiv, pktests_lb_headers, lbid, 5);
+	else
+		newlb = testdiv.getFellowIfAny(lbid);
+
+	newlb.setCheckmark(true);
+	newlb.setMultiple(true);
+	newlb.setHeight("150px");
+
+	for(dpi : tickeds)
+	{
+		ArrayList kabom = new ArrayList();
+		mysftc = dpi.getChildren().get(2).getLabel();
+
+		// make sure no dups picked
+		if(lbhandler.matchListboxReturnListItem(newlb,mysftc,2) == null)
+		{
+			kabom.add(dpi.getChildren().get(0).getLabel()); // test
+			kabom.add(dpi.getChildren().get(1).getLabel()); // method
+
+			kabom.add(mysftc); // mysoftcode
+			kabom.add(dpi.getChildren().get(3).getLabel()); // tpid
+
+			strarray = kiboo.convertArrayListToStringArray(kabom);
+			lbhandler.insertListItems(newlb,strarray,"false","");
+
+			glob_dirtyflag = true;
+		}
+	}
+
+	picktest_popup.close();
+}
+
+// Remove ticked tests from sample..
+void removeTickedTests()
+{
+	Div testdiv;
+	Listbox thelb;
+	String testdivid,lbid;
+
+	for(i=1;i<glob_sample_numlines+1;i++)
+	{
+		try
+		{
+			testdivid = "tst" + i.toString();
+			testdiv = samples_grid.getFellowIfAny(testdivid);
+			if(testdiv != null)
+			{
+				lbid = "samptst_lb" + i.toString();
+				if(testdiv.getFellowIfAny(lbid) != null)
+				{
+					thelb = testdiv.getFellowIfAny(lbid);
+
+					selitems = thelb.getSelectedItems();
+					//alert(thelb + " :: " + selitems);
+					if(selitems != null)
+					{
+						alip = selitems.toArray();
+						for(j=0;j<alip.length;j++)
+						{
+							dpi = alip[j];
+							thelb.removeItemFromSelection(dpi);
+							thelb.removeChild(dpi);
+						}
+
+						glob_dirtyflag = true;
+					}
+
+					if(thelb.getItemCount() < 1) thelb.setParent(null); // no more listitems, remove listbox
+				}
+			}
+		}
+		catch (Exception e) {}
+	}
+}
+
+void removeSample()
+{
+	if(glob_selected_samprow == null) return;
+
+	Messagebox.show("Wil completely remove this sample and any tests assigned..", "Are you sure?",
+		Messagebox.YES | Messagebox.NO, Messagebox.QUESTION,
+		new org.zkoss.zk.ui.event.EventListener()
+		{
+			public void onEvent(Event e)
+			{
+				//alert(e.getName() + " :: " + Messagebox.YES);
+
+				if(e.getName().equals("onYes"))
+				{
+					smptstlbid = "samptst_lb" + glob_samprow_id;
+					tstdivid = "tst" + glob_samprow_id;
+					smprowid = "smp" + glob_samprow_id;
+	
+					// remove sample->tests-list
+					if(samples_grid.getFellowIfAny(smptstlbid) != null)
+					{
+						ayo = samples_grid.getFellowIfAny(smptstlbid);
+						ayo.setParent(null);
+					}
+	
+					// remove sample->tests holder
+					if(samples_grid.getFellowIfAny(tstdivid) != null)
+					{
+						ayo = samples_grid.getFellowIfAny(tstdivid);
+						ayo.setParent(null);
+					}
+
+					// remove row
+					if(samples_grid.getFellowIfAny(smprowid) != null)
+					{
+						ayo = samples_grid.getFellowIfAny(smprowid);
+						ayo.setParent(null);
+					}
+
+					glob_dirtyflag = true;
+				}
+			}
+		}
+
+   	); // ENDOF Messagebox.show()
+}
+
+// Save whatever samples and tests added 
+void saveSamplesList()
+{
+	Div testdiv;
+	Listbox thelb;
+	String testdivid,lbid;
+
+	// disable first.. have to add eventlistener for textbox .. otherwise cannot set dirtyflag
+	//if(!glob_dirtyflag) return;
+
+	rowchd = global_samples_grid.getChildren();
+	if(rowchd == null) return;
+	rowchdary = rowchd.toArray();
+
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null ) { guihand.showMessageBox("DBERR: Cannot open database.."); return; }
+
+	// remove all prev samples + tests
+	sqlstm = "delete from itest_jobtestparameters where job_id=" + glob_selected_folderno;
+	sql.execute(sqlstm);
+
+	sqlstm = "delete from itest_jobsamples where job_id=" + glob_selected_folderno;
+	sql.execute(sqlstm);
+
+	for(i=0; i<rowchdary.length; i++)
+	{
+		rowid = rowchdary[i].getId();
+		rowid = rowid.substring(3,rowid.length());
+
+		smpid_id = "sid" + rowid;
+		smpmk_id = "smk" + rowid;
+		smpid_tb = samples_grid.getFellowIfAny(smpid_id);
+		smpmk_tb = samples_grid.getFellowIfAny(smpmk_id);
+
+		smpid = kiboo.replaceSingleQuotes(smpid_tb.getValue());
+		smpmk = kiboo.replaceSingleQuotes(smpmk_tb.getValue());
+
+		// save to itest_jobsamples
+		sqlstm2 = "insert into itest_jobsamples (job_id,sampleid,samplemarking,mysampid) values " +
+		"(" + glob_selected_folderno + ",'" + smpid + "','" + smpmk + "'," + rowid + ")";
+
+		sql.execute(sqlstm2);
+
+		testdivid = "tst" + rowid;
+		testdiv = samples_grid.getFellowIfAny(testdivid);
+		if(testdiv != null)
+		{
+			lbid = "samptst_lb" + rowid;
+			if(testdiv.getFellowIfAny(lbid) != null)
+			{
+				thelb = testdiv.getFellowIfAny(lbid);
+				testitems = thelb.getItems();
+
+				// insert itest_jobtestparameters
+				for(dpi : testitems)
+				{
+					tstname = lbhandler.getListcellItemLabel(dpi,0);
+					tstmthd = lbhandler.getListcellItemLabel(dpi,1);
+					mysftc = lbhandler.getListcellItemLabel(dpi,2);
+					tpid = lbhandler.getListcellItemLabel(dpi,3);
+
+					sqlstm3 = "insert into itest_jobtestparameters (job_id,mysampid,testname,testmethod,als_mysoftcode,als_testpackageid) values " +
+					"(" + glob_selected_folderno + "," + rowid + ",'" + tstname + "','" + tstmthd + "'," + mysftc + "," + tpid + ")";
+
+					sql.execute(sqlstm3);
+				}
+			}
+		}
+	}
+
+	sql.close();
+	glob_dirtyflag = false; // samples + tests saved.. not dirty anymore
+	guihand.showMessageBox("Samples and assigned tests saved..");
+}
+
+// show samples+tests assigned to a folder : iorigid=folder no.
+void showSamplesTests(String iorigid)
+{
+	if(samples_holder.getFellowIfAny("samples_grid") != null)
+	{
+		clerm = samples_holder.getFellowIfAny("samples_grid");
+		clerm.setParent(null);
+	}
+
+	// create the grid and rows
+	thegrid = new Grid();
+	thegrid.setId("samples_grid");
+	gridrows = gridhand.gridMakeRows("","",thegrid);
+	gridhand.makeGridHeaderColumns_Width(reqitemHeader, reqitemHdWid, thegrid);
+	thegrid.setParent(samples_holder);
+	global_samples_grid = gridrows; // later usage
+
+	// all start from 1
+	glob_sample_line = 1;
+	glob_sample_numlines = 1;
+
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null ) return;
+
+	sqlstm1 = "select sampleid,samplemarking,mysampid from itest_jobsamples where job_id=" + iorigid;
+	srecs = sql.rows(sqlstm1);
+
+	if(srecs.size() == 0) { sql.close(); return; }
+
+	for(dpi : srecs)
+	{
+		sampline = glob_sample_line.toString();
+		samprowid = "smp" + sampline;
+		testdivid = "tst" + sampline;
+
+		newrow = gridhand.gridMakeRow(samprowid,"","",global_samples_grid);
+		newrow.addEventListener("onClick", new sampItemOnSelect());
+
+		smpid_tb = gridhand.makeTextboxToParent("","","100%","",false,newrow);
+		smpmk_tb = gridhand.makeTextboxToParent("","","100%","30px",true,newrow);
+
+		smpid_id = "sid" + sampline;
+		smpmk_id = "smk" + sampline;
+
+		smpid_tb.setId(smpid_id);
+		smpmk_tb.setId(smpmk_id);
+
+		smpid_tb.setValue(dpi.get("sampleid"));
+		smpmk_tb.setValue(dpi.get("samplemarking"));
+
+		// use Detail in grid->row for better organizing the stuff
+		Detail deting = new Detail();
+		//deting.setOpen(true);
+		deting.setParent(newrow);
+		newdiv = new Div(); // holder to sample->tests lb
+		newdiv.setId(testdivid);
+		newdiv.setParent(deting);
+
+		// show the tests-assigned
+		tmysampid = dpi.get("mysampid").toString();
+		sqlstm2 = "select testname,testmethod,als_mysoftcode,als_testpackageid from itest_jobtestparameters " + 
+		"where job_id=" + iorigid + " and mysampid=" + tmysampid;
+
+		testrecs = sql.rows(sqlstm2);
+		if(testrecs.size() > 0)
+		{
+			lbid = "samptst_lb" + sampline;
+			newlb = lbhandler.makeVWListbox(newdiv, pktests_lb_headers, lbid, 5);
+			newlb.setCheckmark(true);
+			newlb.setMultiple(true);
+			newlb.setHeight("150px");
+
+			for(tpi : testrecs)
+			{
+				ArrayList kabom = new ArrayList();
+
+				kabom.add(tpi.get("testname")); // test
+				kabom.add(tpi.get("testmethod"));
+
+				kabom.add(tpi.get("als_mysoftcode").toString()); // mysoftcode
+				kabom.add(tpi.get("als_testpackageid").toString()); // tpid
+
+				strarray = kiboo.convertArrayListToStringArray(kabom);
+				lbhandler.insertListItems(newlb,strarray,"false","");
+			}
+		}
+
+		// update glob vars
+		glob_sample_line++;
+		glob_sample_numlines++;
+	}
+	
+	sql.close();
+
+	//glob_dirtyflag = true;
+
+}
+
+// job-folders related funcs
+
+Object getItestJobFolder(String iorigid)
+{
+	retval = null;
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null ) return null;
+	sqlstm = "select * from itest_jobfolder where origid=" + iorigid;
+	retval = sql.firstRow(sqlstm);
+	sql.close();
+	return retval;
+}
+
+void showFolderMetadata(String iorigid)
+{
+	trec = getItestJobFolder(iorigid);
+	if(trec == null) return;
+
+	custjob_jobdescription.setValue(kiboo.checkNullString(trec.get("jobdescription")));
+	custjob_extranotes.setValue(kiboo.checkNullString(trec.get("extranotes")));
+	custjob_project_id.setValue(kiboo.checkNullString(trec.get("project_id")));
+
+	disableButts(false);
+	// if folder not DRAFT, disable all butts
+	if(!glob_selected_folder_status.equals("DRAFT")) disableButts(true);
+
+	folderthing_title.setValue(trec.get("cust_prefix") + trec.get("origid").toString() + " [ " + trec.get("status") + " ]");
+
+	workarea.setVisible(true);
+}
+
+class folderOnSelect implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		selitem = jobfolders_lb.getSelectedItem();
+		glob_selected_folderno = lbhandler.getListcellItemLabel(selitem,0);
+		glob_selected_folder_status = lbhandler.getListcellItemLabel(selitem,5);
+
+		showFolderMetadata(glob_selected_folderno);
+		showSamplesTests(glob_selected_folderno);
+	}
+}
+
+Object[] jobfolders_lb_headers = {
+	new listboxHeaderWidthObj("origid",false,""),
+	new listboxHeaderWidthObj("Job#",true,"50px"),
+	new listboxHeaderWidthObj("Dated",true,"60px"),
+	new listboxHeaderWidthObj("Desc",true,"100px"),
+	new listboxHeaderWidthObj("User",true,"60px"),
+	new listboxHeaderWidthObj("Stat",true,"50px"),
+	new listboxHeaderWidthObj("ALS Recv",true,""),
+};
+
+void listJobFolders(int itype)
+{
+	sdate = kiboo.getDateFromDatebox(startdate);
+	edate = kiboo.getDateFromDatebox(enddate);
+
+	last_listfolder_type = itype;
+	resetGlobalVars();
+	workarea.setVisible(false);
+
+	Listbox newlb = lbhandler.makeVWListbox_Width(folders_holder, jobfolders_lb_headers, "jobfolders_lb", 20);
+
+	sqlstm = "select top 200 origid,cust_prefix,cust_username,datecreated,datereceived,status,jobdescription from itest_jobfolder " +
+	"where datecreated between '" + sdate + "' and '" + edate + "' order by origid desc";
+
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null ) return;
+	trecs = sql.rows(sqlstm);
+	sql.close();
+	
+	if(trecs.size() == 0) return;
+	//newlb.setHeight("400px");
+	newlb.addEventListener("onClick", new folderOnSelect());
+
+	for(dpi : trecs)
+	{
+		ArrayList kabom = new ArrayList();
+
+		kabom.add(dpi.get("origid").toString());
+		kabom.add(dpi.get("cust_prefix") + dpi.get("origid").toString());
+		kabom.add(dpi.get("datecreated").toString().substring(0,10));
+
+		kabom.add(dpi.get("jobdescription"));
+		kabom.add(dpi.get("cust_username"));
+
+		kabom.add(dpi.get("status"));
+		kabom.add(kiboo.checkNullDate(dpi.get("datereceived"),""));
+
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhandler.insertListItems(newlb,strarray,"false","");
+	}
+}
+
+// itype: 1=new folder, 2=cancel folder, 3=commit, 4=uncommit
+void folderFuncs(int itype)
+{
+	boolean refresh = false;
+	todate = kiboo.getDateFromDatebox(hiddendatebox);
+
+	switch(itype)
+	{
+		case 1: // new folder
+			// 05/12/2012: uses customer.newfield9 for the prefix
+			tarcode = company_Record.get("ar_code");
+			tprefix = company_Record.get("NewField9");
+
+			sqlstm = "insert into itest_jobfolder (ar_code,cust_prefix,cust_username,datecreated,status," + 
+			"jobdescription,extranotes) values " +
+			"('" + tarcode + "','" + tprefix + "','" + itest_useraccessobj.username + "','" + todate + "','DRAFT','','')";
+
+			sqlhand.gpSqlExecuter(sqlstm);
+			refresh = true;
+			break;
+			
+		case 2: // cancel folder
+			if(glob_selected_folderno.equals("")) return;
+			if(!glob_selected_folder_status.equals("DRAFT"))
+			{
+				guihand.showMessageBox("Only job-folder in DRAFT status can be cancelled");
+				return;
+			}
+
+			Messagebox.show("Will completely remove this job-folder..", "Are you sure?",
+				Messagebox.YES | Messagebox.NO, Messagebox.QUESTION,
+				new org.zkoss.zk.ui.event.EventListener()
+				{
+					public void onEvent(Event e)
+					{
+						if(e.getName().equals("onYes"))
+						{
+							sqlstm  = "delete from itest_jobtestparameters where job_id=" + glob_selected_folderno + ";";
+							sqlstm += "delete from itest_jobsamples where job_id=" + glob_selected_folderno + ";";
+							sqlstm += "delete from itest_jobfolder where origid=" + glob_selected_folderno + ";";
+							sqlhand.gpSqlExecuter(sqlstm);
+							listJobFolders(last_listfolder_type); // refresh
+						}
+					}
+				}
+		   	); // ENDOF Messagebox.show()
+
+			break;
+
+		case 3: // commit
+		case 4: // uncommit
+			if(glob_selected_folderno.equals("")) return;
+
+			Messagebox.show("Once committed, no modification allowed..", "Are you sure?",
+				Messagebox.YES | Messagebox.NO, Messagebox.QUESTION,
+				new org.zkoss.zk.ui.event.EventListener()
+				{
+					public void onEvent(Event e)
+					{
+						if(e.getName().equals("onYes"))
+						{
+							tstat = (itype == 3) ? "COMMITTED" : "DRAFT";
+							sqlstm = "update itest_jobfolder set status='" + tstat + "' where origid=" + glob_selected_folderno;
+							sqlhand.gpSqlExecuter(sqlstm);
+							refresh = true;
+						}
+					}
+				}
+		   	); // ENDOF Messagebox.show()
+		   	break;
+
+		case 5: // save folder metadata
+			if(glob_selected_folderno.equals("")) return;
+			jbdesc = kiboo.replaceSingleQuotes(custjob_jobdescription.getValue());
+			jbextn = kiboo.replaceSingleQuotes(custjob_extranotes.getValue());
+			jbproid = kiboo.replaceSingleQuotes(custjob_project_id.getValue());
+			sqlstm = "update itest_jobfolder set jobdescription='" + jbdesc + "', extranotes='" + jbextn + "'," + 
+			"project_id='" + jbproid + "' where origid=" + glob_selected_folderno;
+			sqlhand.gpSqlExecuter(sqlstm);
+			refresh = true;
+			break;
+	}
+
+	if(refresh)
+	{
+		listJobFolders(last_listfolder_type);
+	}
+
+}
+
+]]>
+</zscript>
+
+<!-- super pop-up to pick tests -->
+<popup id="picktest_popup">
+<groupbox mold="3d" width="700px">
+<caption label="Pick tests" />
+	<hbox>
+		<div id="testpackages_holder" width="300px" />
+		<div id="testpicker_holder" />
+	</hbox>
+	<separator height="2px" />
+	<hbox>
+		<button label="Pick" onClick="pickTickedTests()" />
+		<button label="Close" onClick="picktest_popup.close()" />
+	</hbox>
+</groupbox>
+</popup>
+<!-- ENDOF super pop-up to pick tests -->
+
+<div width="1000px">
+<panel id="regsamp_panel" title="Samples Registration ${MYVERSION}" border="normal" collapsible="true" closable="true">
+<panelchildren style="overflow: auto">
+<datebox id="hiddendatebox" format="yyyy-MM-dd" visible="false" onCreate="self.value = new Date()" />
+
+<hbox>
+	<!-- folders listing area -->
+	<groupbox width="400px" mold="3d">
+		<hbox>
+			<label value="Start date" />
+			<datebox id="startdate" format="yyyy-MM-dd" />
+			<label value="End date" />
+			<datebox id="enddate" format="yyyy-MM-dd" />
+			<button label="Load" onClick="listJobFolders(1)" />
+		</hbox>
+		<separator bar="true" />
+		<hbox>
+			<button label="New" onClick="folderFuncs(1)" />
+			<button id="cancelfolder_butt" label="Cancel" onClick="folderFuncs(2)" />
+			<button id="commitfolder_butt" label="Commit" onClick="folderFuncs(3)" />
+			<!-- <button id="printfolder_butt" label="Print COC" /> -->
+		</hbox>
+		<separator height="3px" />
+
+		<div id="adminstuff" style="background:#931616;padding:2px">
+			<hbox>
+				<button label="uncommit" style="font-size:9px" onClick="folderFuncs(4)" />
+			</hbox>
+		</div>
+
+		<div id="folders_holder" />
+	</groupbox>
+	<!-- ENDOF folders listing area -->
+
+	<!-- reg workarea -->
+	<div id="workarea" visible="false">
+		<div style="background:#aded29;padding:2px">
+			<label id="folderthing_title" style="font-weight:bold" />
+			<label style="font-size:9px">
+			(No modification once job-folder is COMMITTED)
+			</label>
+		</div>
+		<tabbox mold="accordion" width="595px">
+			<tabs>
+				<tab id="foldertab" label=":: Job folder metadata" />
+				<tab label=":: Samples handling" />
+			</tabs>
+			<tabpanels>
+				<!-- folder metadata tab -->
+				<tabpanel>
+					<grid>
+						<columns sizable="true">
+							<column width="100px"/>
+							<column label=""/>
+						</columns>
+						<rows>
+							<row>
+								<label value="Job description" />
+								<textbox id="custjob_jobdescription" multiline="true" width="99%" height="50px" />
+							</row>
+							<row>
+								<label value="Your project / client details" />
+								<textbox id="custjob_project_id" width="99%" />
+							</row>
+							<row>
+								<label value="Extra notes" />
+								<textbox id="custjob_extranotes" multiline="true" width="99%" height="50px" />
+							</row>
+						</rows>
+					</grid>
+					<hbox>
+						<button id="updatefolder_butt" label="Update info" onClick="folderFuncs(5)" />
+					</hbox>
+				</tabpanel>
+				<!-- ENDOF folder metadata tab -->
+
+				<!-- samples handling tab -->
+				<tabpanel>
+					<div style="background:#ffa500;padding:2px">
+					<label style="font-size:9px" multiline="true">(ALWAYS click "Save samples list" to update changes)
+						(If a job-folder is COMMITTED, no further changes are allowed)
+					</label>
+					</div>
+					<separator height="2px" />
+					<hbox>
+						<button id="addsamp_butt" label="Add sample" onClick="addSamples()" />
+						<button id="remsamp_butt" label="Remove sample" onClick="removeSample()" />
+						<button id="savelist_butt" label="Save samples list" onClick="saveSamplesList()" />
+						<button id="picktest_butt" label="Pick tests" onClick="pickTests()" />
+						<button id="remtest_butt" label="Remove tests" onClick="removeTickedTests()" />
+					</hbox>
+					<separator height="2px" />
+					<hbox>
+						
+					</hbox>
+					<separator height="3px" />
+					<div id="samples_holder" />
+				</tabpanel>
+				<!-- ENDOF samples handling tab -->
+			</tabpanels>
+		</tabbox>
+
+	</div>
+	<!-- ENDOF reg workarea -->
+	
+</hbox>
+
+<zscript>
+<![CDATA[
+
+kiboo.setTodayDatebox(startdate);
+kiboo.setTodayDatebox(enddate);
+
+company_Record = sqlhand.getCompanyRecord(itest_useraccessobj.ar_code); // global-usage later
+
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+

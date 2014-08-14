@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="als_portal_main" title="RW Partner Access Portal" ?>
+<zk>
+<zscript>
+<![CDATA[
+MYTITLE = "RW Partner Access Portal";
+MYVERSION = "0.2";
+/*
+File : RW partner access portal
+Written by : Victor Wong
+Dated : 12/08/2013
+
+*NOTES*
+knockoff from itest
+
+*/
+import org.victor.*;
+sechand = new SecurityFuncs();
+itest_useraccessobj = sechand.itest_getUserAccessObject();
+if(itest_useraccessobj == null) Executions.sendRedirect("index.zul");
+
+mainPlayground = "/mainprogram/";
+
+MAINBARCOLOR = "#2e3436";
+MENUBARCOLOR = "#729fcf";
+
+glob_warehouse = itest_useraccessobj.branch;
+
+// Load external module into main program
+// recoded this globalActivateWindow() from alsglobal_guifuncs.zs with iplayg
+void activateModule(String iplayg, String parentdiv_name, String winfn, String windId, String uParams, Object uAO)
+{
+	Include newinclude = new Include();
+	//newinclude.setId(windId);
+
+	includepath = winfn + "?myid=" + windId + "&" + uParams;
+	newinclude.setSrc(includepath);
+
+	sechand.itest_setUserAccessObj(newinclude, uAO); // securityfuncs.zs
+
+	Div contdiv = Path.getComponent(iplayg + parentdiv_name);
+	newinclude.setParent(contdiv);
+
+} // activateModule()
+
+// run i-test modules - simple switch and load - minimum modules for now(20/03/2012)
+// itype: 1=reg sample, 2=jobs browser, 3=reports, 4=docs-retrieval, 5=user profile
+void runItestModule(int itype)
+{
+	runstr = "";
+	runstrid = "";
+
+	switch(itype)
+	{
+		case 1: // service tickets
+			runstr = "rw_mods/servicetickets_v1.zul";
+			runstrid = "svtk";
+			break;
+		case 10: // user profile
+			runstr = "rw_mods/partners_profile_v1.zul";
+			runstrid = "iprof";
+			break;
+		case 13:
+			runstr = "rw_mods/ptinventory_v1.zul";
+			runstrid = "ptinvent";
+			break;
+	}
+
+	if(!runstr.equals("")) activateModule(mainPlayground,"workbox",runstr,runstrid,"",itest_useraccessobj);
+}
+
+// Logout: knockoff from vplay.zul
+void logoutSystem()
+{
+	Window loginwindow = Path.getComponent("//als_portal_login/loginwin");
+	loginwindow.setVisible(true);
+	Include logininc = Path.getComponent("//als_portal_login/mainprogram");
+	logininc.setSrc("");
+	//useraccessobj.clearAll();
+} // end of logoutSystem()
+
+void testme()
+{
+	wikk = Path.getPath(testmebutt);
+	alert(wikk);
+}
+
+]]>
+</zscript>
+
+<style>
+	body
+	{
+	padding: 0 0;
+	background-color:#2e3436;
+	-webkit-background-size: cover;
+	-moz-background-size: cover;
+	-o-background-size: cover;
+	background-size: cover;
+	}
+
+</style>
+
+
+<image src="/rwimg/partnermainbanner_1.jpg" />
+<!--
+background: url('rwimg/RWS_loginsplash_1.png') no-repeat center center fixed;
+<div>
+	<fisheyebar id="mainfsb" style="position:absolute;margin:-20px 550px;"
+		attachEdge="top" itemWidth="80" itemHeight="80" itemMaxHeight="100" itemMaxWidth="120">
+		<fisheye image="/itestimg/Add.png" label="Register samples" onClick="runItestModule(1)" />
+		<fisheye image="/itestimg/Edit.png" label="Jobs browser" onClick="runItestModule(2)" />
+		<fisheye image="/itestimg/Document-Folder.png" label="Documents retrieval" onClick="runItestModule(4)" />
+		<fisheye image="/itestimg/school.png" label="Results" onClick="runItestModule(3)" />
+		<fisheye image="/itestimg/help.png" label="Help" />
+		<fisheye id="adminsetting_fe" image="/itestimg/Android-Setting.png" label="Profile" onClick="runItestModule(5)" visible="false" />
+		<fisheye image="/itestimg/interact.png" label="Logout" onClick="logoutSystem()" />
+	</fisheyebar>
+</div>
+-->
+
+<div style="background:${MAINBARCOLOR};padding:3px" width="992px">
+<label style="font-size:18px;font-weight:bold;color:#FFFFFF">${MYTITLE}</label>
+<label style="font-size:9px;color:#FFFFFF">${MYVERSION}</label>
+<label style="font-size:9px;color:#FFFFFF">(${glob_warehouse})</label>
+<space spacing="400px" />
+</div>
+
+<div style="background:${MENUBARCOLOR};padding:3px" width="992px" >
+<hbox>
+	<button label="Service tickets" onClick="runItestModule(1)" />
+	<button label="Messages" onClick="runItestModule(2)" disabled="true" visible="false" />
+	<button label="Parts inventory" onClick="runItestModule(3)" disabled="true" visible="false" />
+	<button label="User profile" onClick="runItestModule(10)" />
+	<button label="News" onClick="runItestModule(12)" disabled="true" visible="false" />
+	<button label="Help" onClick="runItestModule(11)" disabled="true" visible="false" />
+	<button id="partsinvent_b" label="Parts Inventory" onClick="runItestModule(13)" disabled="true" visible="false" />
+	<button label="Logout" onClick="logoutSystem()" />
+</hbox>
+</div>
+
+<!-- <button id="testmebutt" label="testme" onClick="testme()" /> -->
+
+<div id="workbox" />
+<div id="worksandbox" />
+<div id="miscwindows" />
+
+<zscript>
+<![CDATA[
+
+partsinvent_b.setDisabled(false);
+partsinvent_b.setVisible(true);
+
+/*
+if(itest_useraccessobj.username.equals("metest"))
+{
+	partsinvent_b.setDisabled(false);
+	partsinvent_b.setVisible(true);
+}
+*/
+
+// adminsetting_fe.setVisible(true);
+// testmebutt.setVisible(false);
+
+]]>
+</zscript>
+</zk>
+
+

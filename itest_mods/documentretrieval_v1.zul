@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="docretr_mod"?>
+<zk>
+<zscript>
+<![CDATA[
+MYTITLE = "Documents Retrieval";
+MYVERSION = "0.1d";
+/*
+Title		: i-Test document retrieval
+Written by	: Victor Wong
+
+Linking to folder's attached documents in e-labman.
+
+Revisions:
+
+17/07/2012: started
+
+*/
+/*
+import java.text.*;
+import java.lang.Float;
+import groovy.sql.Sql;
+import org.zkoss.zk.ui.*;
+import org.zkoss.zk.zutl.*;
+*/
+import java.util.*;
+import org.victor.*;
+
+Generals kiboo = new Generals();
+ListboxHandler lbhand = new ListboxHandler();
+SqlFuncs sqlhand = new SqlFuncs();
+GuiFuncs guihand = new GuiFuncs();
+SecurityFuncs sechand = new SecurityFuncs();
+itest_useraccessobj = sechand.itest_getUserAccessObject();
+if(itest_useraccessobj == null) Executions.sendRedirect("index.zul");
+
+myincludeid = Executions.getCurrent().getParameter("myid");
+
+glob_selected_folderno = "";
+glob_selected_folder_status = "";
+glob_selected_folderstr = "";
+last_listfolder_type = 0;
+
+// document related vars
+global_doculink_origid = "";
+global_docu_status = "";
+
+void viewLinkingDocument()
+{
+	if(global_doculink_origid.equals("")) return;
+	if(!global_docu_status.equals("ACTIVE")) { guihand.showMessageBox("Sorry, cannot view inactive document"); return; }
+
+	theparam = "docid=" + global_doculink_origid;
+	uniqid = kiboo.makeRandomId("vdc");
+	guihand.globalActivateWindow("/loader_holder/","","itest_mods/viewlinkingdocument.zul", uniqid, theparam, itest_useraccessobj);
+}
+
+Object[] documentLinks_lb_headers = {
+	new listboxHeaderWidthObj("origid",false,""),
+	new listboxHeaderWidthObj("Title",true,""),
+	new listboxHeaderWidthObj("Status",true,"60px"),
+	new listboxHeaderWidthObj("D.Created",true,"70px"),
+	new listboxHeaderWidthObj("Username",true,"80px")
+};
+
+class documentLinksListbox_Listener implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		lbitem = event.getReference();
+		global_doculink_origid = lbhand.getListcellItemLabel(lbitem, 0); // save to global so everyone can play
+		global_docu_status = lbhand.getListcellItemLabel(lbitem, 2);
+
+/*
+		docrec = dochand.getLinkingDocumentRec(eorigid);
+		update_file_title.setValue(docrec.get("file_title"));
+		update_file_description.setValue(docrec.get("file_description"));
+
+		lbhand.matchListboxItems(update_docu_status, docrec.get("docu_status"));
+
+		// check owner of this document link - if not owner, disable "Update details" button
+		cusername = useraccessobj.username;
+		updatedetails_linkingdoc_btn.setDisabled(true);
+
+		if(cusername.equals(docrec.get("username")))
+			updatedetails_linkingdoc_btn.setDisabled(false);
+
+		if(useraccessobj.accesslevel == 9 || cusername.equals("toymaker"))
+			updatedetails_linkingdoc_btn.setDisabled(false);
+*/
+	}
+}
+
+// itype: 1=by folder, 2=by ar_code
+public void populateDocumentLinks(Div thediv, String ieqid, String iprefix, int itype)
+{
+	Listbox newlb = lbhand.makeVWListbox_Width(thediv, documentLinks_lb_headers, "doculinks_lb", 5);
+
+	ds_sql = sqlhand.als_DocumentStorage();
+	if(ds_sql == null) return;
+	
+	global_doculink_origid = "";
+
+	doculink_str = iprefix + ieqid;
+	deleted_str = " and deleted=0";
+
+	// check if admin login - able to view deleted-flag items and all documents
+	if(itest_useraccessobj.accesslevel == 9)
+	{
+		deleted_str = "";
+	}
+	
+	loadfilede = (itype == 2) ? "file_description," : ""; // if by ar_code, load file_description field
+
+	sqlst2 = "select origid,file_title," + loadfilede + "deleted,docu_status,datecreated,username from DocumentTable where docu_link='" + doculink_str + "'" + deleted_str;
+	doctab_recs = ds_sql.rows(sqlst2);
+	ds_sql.close();
+
+	if(doctab_recs == null || doctab_recs.size() == 0) return;
+
+	newlb.addEventListener("onSelect", new documentLinksListbox_Listener());
+	newlb.setRows(10);
+	String[] strarray = new String[5];
+
+	for(doc1rec : doctab_recs)
+	{
+		strarray[0] = doc1rec.get("origid").toString();
+
+		filetitle = kiboo.checkNullString(doc1rec.get("file_title"));
+		if(itype == 2) filetitle += " :: " + kiboo.checkNullString(doc1rec.get("file_description")); // if by ar_code
+
+		if(doc1rec.get("deleted") == 1) filetitle = filetitle + " [del]";
+		strarray[1] = filetitle;
+		strarray[2] = doc1rec.get("docu_status");
+		strarray[3] = doc1rec.get("datecreated").toString().substring(0,10);
+		strarray[4] = doc1rec.get("username");
+		lbhand.insertListItems(newlb,strarray,"false","");
+	}
+
+	docu_div.setVisible(true);
+}
+
+Object[] jobfolders_lb_headers = {
+	new listboxHeaderWidthObj("origid",false,""),
+	new listboxHeaderWidthObj("ALS Folder",true,"80px"),
+	new listboxHeaderWidthObj("Dated",true,"60px"),
+	new listboxHeaderWidthObj("Status",true,"80px"),
+	new listboxHeaderWidthObj("LabStat",true,"80px"),
+};
+
+class folderOnSelect implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		selitem = jobfolders_lb.getSelectedItem();
+		glob_selected_folderno = lbhand.getListcellItemLabel(selitem,0);
+		glob_selected_folderstr = lbhand.getListcellItemLabel(selitem,1);
+		//glob_selected_folder_status = lbhandler.getListcellItemLabel(selitem,5);
+
+		populateDocumentLinks(documents_holder,glob_selected_folderstr,"DOCS",1); // hardcoded docu-prefix
+	}
+}
+
+void listJobFolders(int itype)
+{
+	last_listfolder_type = itype;
+
+	sdate = kiboo.getDateFromDatebox(startdate);
+	edate = kiboo.getDateFromDatebox(enddate);
+	userarcode = itest_useraccessobj.ar_code;
+	searcht = kiboo.replaceSingleQuotes(searchtext.getValue()).trim();
+
+	if(userarcode.equals("")) { guihand.showMessageBox("Sorry.. your account is not activated yet"); return; }
+
+	Listbox newlb = lbhand.makeVWListbox_Width(folders_holder, jobfolders_lb_headers, "jobfolders_lb", 18);
+
+	sqlstm = "select top 200 jf.origid, jf.folderno_str, jf.datecreated, jf.folderstatus, jf.labfolderstatus from jobfolders jf " +
+	"where jf.datecreated between '" + sdate + "' and '" + edate + "' and jf.deleted=0 " + 
+	"and jf.ar_code='" + userarcode + "' " +
+	"order by jf.origid";
+
+	if(itype == 2 && searcht.equals("")) return;
+	if(itype == 2)
+		sqlstm = "select top 200 jf.origid, jf.folderno_str, jf.datecreated, jf.folderstatus, jf.labfolderstatus from jobfolders jf " +
+		"left join jobsamples js on js.jobfolders_id = jf.origid " +
+		"where jf.datecreated between '" + sdate + "' and '" + edate + "' and jf.deleted=0 " + 
+		"and jf.ar_code='" + userarcode + "' and js.samplemarking like '%" + searcht + "%' " +
+		"order by jf.origid";
+
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null ) return;
+	trecs = sql.rows(sqlstm);
+	sql.close();
+
+	if(trecs.size() == 0) return;
+	//newlb.setHeight("400px");
+	newlb.addEventListener("onClick", new folderOnSelect());
+
+	for(dpi : trecs)
+	{
+		ArrayList kabom = new ArrayList();
+
+		kabom.add(dpi.get("origid").toString());
+		kabom.add(dpi.get("folderno_str"));
+		kabom.add(kiboo.checkNullDate(dpi.get("datecreated"),""));
+
+		kabom.add(dpi.get("folderstatus"));
+		kabom.add(kiboo.checkNullString_RetWat(dpi.get("labfolderstatus"),"---"));
+
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhand.insertListItems(newlb,strarray,"false","");
+	}
+}
+
+void loadNonFolderDocuments()
+{
+	populateDocumentLinks(documents_holder,itest_useraccessobj.ar_code,"DOCU",2); // hardcoded docu-prefix - and ar_code for non-jobfolder documents
+	docu_div.setVisible(true);
+}
+
+void testme()
+{
+	alert(itest_useraccessobj.ar_code);
+}
+
+]]>
+</zscript>
+
+<div width="1000px">
+<panel id="jobbrowser_panel" title="${MYTITLE} ${MYVERSION}" border="normal" collapsible="true" closable="true" >
+<panelchildren>
+<datebox id="hiddendatebox" format="yyyy-MM-dd" visible="false" onCreate="self.value = new Date()" />
+
+<hbox>
+	<!-- folders listing area -->
+	<groupbox mold="3d">
+		<hbox>
+			<label value="Start date" />
+			<datebox id="startdate" format="yyyy-MM-dd" />
+			<label value="End date" />
+			<datebox id="enddate" format="yyyy-MM-dd" />
+			<button label="Load by folders" onClick="listJobFolders(1)" />
+			<separator width="40px" />
+			<label value="Search text" />
+			<textbox id="searchtext" />
+			<button label="Find by sample-marking" onClick="listJobFolders(2)" />
+			<label style="font-size:9px">(Max. 200 jobs per load)</label>
+		</hbox>
+		<button label="Load non-folder documents" onClick="loadNonFolderDocuments()" />
+	</groupbox>
+	<hbox>
+		<!-- <button label="Export results (Excel)" /> -->
+	</hbox>
+
+	<div id="adminstuff" style="background:#931616;padding:2px" visible="false">
+	</div>
+
+	<!-- ENDOF folders listing area -->
+</hbox>
+
+<separator height="5px" />
+
+<!-- workarea -->
+<hbox>
+
+<div id="folders_holder" width="330px" />
+
+<div id="docu_div" visible="false">
+	<button label="View/Download document" onClick="viewLinkingDocument()" />
+	<separator height="3px" />
+	<div id="documents_holder" />
+</div>
+
+</hbox>
+<!-- ENDOF workarea -->
+
+<div id="loader_holder" />
+
+<!-- <button id="testmebutt" label="testme" onClick="testme()" /> -->
+
+<zscript>
+<![CDATA[
+
+kiboo.setTodayDatebox(startdate);
+kiboo.setTodayDatebox(enddate);
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+

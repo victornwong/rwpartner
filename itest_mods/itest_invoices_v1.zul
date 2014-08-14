@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="invoicebrowser_mod"?>
+<zk>
+<zscript>
+<![CDATA[
+MYTITLE = "Invoices Browser";
+MYVERSION = "0.1d";
+/*
+Title		: i-Test Invoice browser
+Written by	: Victor Wong
+
+Revisions:
+
+04/12/2012: started
+
+*/
+/*
+import java.text.*;
+import java.lang.Float;
+import groovy.sql.Sql;
+import org.zkoss.zk.ui.*;
+import org.zkoss.zk.zutl.*;
+*/
+import java.text.*;
+import java.util.*;
+import org.victor.*;
+
+Generals kiboo = new Generals();
+GridHandler ghandler = new GridHandler();
+ListboxHandler lbhand = new ListboxHandler();
+SqlFuncs sqlhand = new SqlFuncs();
+GuiFuncs guihand = new GuiFuncs();
+SecurityFuncs sechand = new SecurityFuncs();
+itest_useraccessobj = sechand.itest_getUserAccessObject();
+if(itest_useraccessobj == null) Executions.sendRedirect("index.zul");
+
+myincludeid = Executions.getCurrent().getParameter("myid");
+DecimalFormat nf = new DecimalFormat("######.00");
+DecimalFormat nf2 = new DecimalFormat("##");
+
+glob_selected_inv = "";
+
+DEMO_ARCODE = "300L/005"; // IDS ar_code
+
+Object getInvoiceRec(String iinvno)
+{
+	sql = sqlhand.als_mysoftsql();
+	if(sql == null) return null;
+	sqlstm = "select * from invoice where invoiceno='" + iinvno + "'";
+	retval = sql.firstRow(sqlstm);
+	sql.close();
+	return retval;
+}
+
+void showInvoiceMetadata(String inv_no)
+{
+	irec = getInvoiceRec(inv_no);
+	if(irec == null) return;
+	
+	invoiceno.setValue(inv_no);
+	inv_name.setValue(irec.get("Name"));
+	invoicedate.setValue(irec.get("InvoiceDate").toString().substring(0,10));
+	
+	workarea.setVisible(true);
+}
+
+Object[] invdets_lb_headers = {
+	new listboxHeaderWidthObj("No.",true,"30px"),
+	new listboxHeaderWidthObj("Description",true,""),
+	new listboxHeaderWidthObj("Folder#",true,""),
+	new listboxHeaderWidthObj("Qty",true,"30px"),
+	new listboxHeaderWidthObj("U.Price",true,"100px"),
+};
+
+void showInvoiceDetails(String inv_no)
+{
+	int lncount = 1;
+	sqlstm = "select invd.itemdescription,invd.quantity,invd.unitprice,invd.dono " +
+	"from invoicedetail invd where invd.invoiceno = '" + inv_no + "'";
+
+	Listbox newlb = lbhand.makeVWListbox_Width(invdetails_holder, invdets_lb_headers, "invdetails_lb", 10);
+
+	trecs = sqlhand.gpSqlGetRows(sqlstm);
+	if(trecs.size() == 0) return;
+
+	for(dpi : trecs)
+	{
+		ArrayList kabom = new ArrayList();
+
+		kabom.add(lncount.toString() + ".");
+		kabom.add(sqlhand.clobToString(dpi.get("itemdescription")));
+		kabom.add(dpi.get("dono"));
+		kabom.add(nf2.format(dpi.get("quantity")));
+		kabom.add(nf.format(dpi.get("unitprice")));
+
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhand.insertListItems(newlb,strarray,"false","");
+
+		lncount++;
+	}
+}
+
+Object[] invoices_lb_headers = {
+	new listboxHeaderWidthObj("invid",false,""),
+	new listboxHeaderWidthObj("Invoice#",true,"90px"),
+	new listboxHeaderWidthObj("Dated",true,"70px"),
+	new listboxHeaderWidthObj("Amount",true,"90px"),
+};
+
+class invOnSelect implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		selitem = invoices_lb.getSelectedItem();
+		glob_selected_inv = lbhand.getListcellItemLabel(selitem,1);
+
+		showInvoiceMetadata(glob_selected_inv);
+		showInvoiceDetails(glob_selected_inv);
+	}
+}
+
+void listInvoices()
+{
+	sdate = kiboo.getDateFromDatebox(startdate);
+	edate = kiboo.getDateFromDatebox(enddate);
+	userarcode = itest_useraccessobj.ar_code;
+
+	if(userarcode.equals("")) { guihand.showMessageBox("Sorry.. your account is not activated yet"); return; }
+	Listbox newlb = lbhand.makeVWListbox_Width(invoices_holder, invoices_lb_headers, "invoices_lb", 18);
+
+	sqlstm = "select top 200 inv.id,inv.invoiceno,inv.invoicedate,inv.curcode,inv.total " +
+	"from invoice inv where inv.code = '" + userarcode + "' and inv.cancel=0 " +
+	"and inv.invoicedate between '" + sdate + "' and '" + edate + "'";
+
+	trecs = sqlhand.gpSqlGetRows(sqlstm);
+	if(trecs.size() == 0) return;
+	//newlb.setHeight("400px");
+	newlb.addEventListener("onClick", new invOnSelect());
+
+	for(dpi : trecs)
+	{
+		ArrayList kabom = new ArrayList();
+
+		kabom.add(dpi.get("id").toString());
+		kabom.add(dpi.get("invoiceno"));
+		kabom.add(kiboo.checkNullDate(dpi.get("invoicedate"),""));
+
+		amtstr = dpi.get("curcode") + " " + nf.format(dpi.get("total"));
+		kabom.add(amtstr);
+
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhand.insertListItems(newlb,strarray,"false","");
+	}
+}
+
+
+]]>
+</zscript>
+
+<div width="1000px">
+<panel id="jobbrowser_panel" title="${MYTITLE} ${MYVERSION}" border="normal" collapsible="true" closable="true" >
+<panelchildren>
+<datebox id="hiddendatebox" format="yyyy-MM-dd" visible="false" onCreate="self.value = new Date()" />
+
+<hbox>
+	<!-- folders listing area -->
+	<groupbox mold="3d">
+	<hbox>
+		<label value="Start date" />
+		<datebox id="startdate" format="yyyy-MM-dd" onCreate="self.value = new Date()" />
+		<label value="End date" />
+		<datebox id="enddate" format="yyyy-MM-dd" onCreate="self.value = new Date()" />
+		<button label="Load" onClick="listInvoices()" />
+	</hbox>
+	</groupbox>
+	<hbox>
+		<!-- <button label="Export results (Excel)" /> -->
+	</hbox>
+
+	<div id="adminstuff" style="background:#931616;padding:2px" visible="false">
+	</div>
+
+	<!-- ENDOF folders listing area -->
+</hbox>
+<separator height="5px" />
+<!-- workarea -->
+<hbox>
+<div id="invoices_holder" width="330px" />
+
+<vbox id="workarea" visible="false" >
+	<grid width="450px">
+		<rows>
+			<row>
+				<label value="Invoice#" />
+				<label id="invoiceno" />
+				<label value="Dated" />
+				<label id="invoicedate" />
+			</row>
+			<row spans="1,3">
+				<label value="Company" />
+				<label id="inv_name" />
+			</row>
+		</rows>
+	</grid>
+	<label style="font-size:9px">
+	(Multiple job-folders can be consolidated into a single invoice)
+	</label>
+	<div id="invdetails_holder" />
+</vbox>
+
+</hbox>
+<!-- ENDOF workarea -->
+
+<zscript>
+<![CDATA[
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+

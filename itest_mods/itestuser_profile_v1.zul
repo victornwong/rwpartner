@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="userprofile_mod"?>
+<zk>
+<zscript>
+<![CDATA[
+MYTITLE = "User Profile";
+MYVERSION = "0.1d";
+/*
+Title		: i-Test user profile
+Written by	: Victor Wong
+
+show some basic about user and allow change password
+
+Revisions:
+
+17/07/2012: started
+
+*/
+/*
+import java.text.*;
+import java.lang.Float;
+import groovy.sql.Sql;
+import org.zkoss.zk.ui.*;
+import org.zkoss.zk.zutl.*;
+*/
+import java.util.*;
+import org.victor.*;
+
+Generals kiboo = new Generals();
+ListboxHandler lbhand = new ListboxHandler();
+SqlFuncs sqlhand = new SqlFuncs();
+GuiFuncs guihand = new GuiFuncs();
+SecurityFuncs sechand = new SecurityFuncs();
+itest_useraccessobj = sechand.itest_getUserAccessObject();
+if(itest_useraccessobj == null) Executions.sendRedirect("index.zul");
+
+myincludeid = Executions.getCurrent().getParameter("myid");
+
+// itype: 1=chg contact details, 2=chg password
+void profileFuncs(int itype)
+{
+	rorigid = itest_useraccessobj.origid.toString();
+	dberror = false;
+
+	switch(itype)
+	{
+		case 1: // chg contact details
+			fulname = kiboo.replaceSingleQuotes(fullname.getValue()).trim();
+			telnum = kiboo.replaceSingleQuotes(telephone.getValue()).trim();
+			emaild = kiboo.replaceSingleQuotes(email.getValue()).trim();
+
+			if(fulname.equals("") || telnum.equals("") || emaild.equals(""))
+			{
+				guihand.showMessageBox("Fullname, telephone and email are mandatory");
+				return;
+			}
+			sqlstm = "update webreportuser set fullname='" + fulname + "', handphone='" + telnum + "', email='" + emaild + "' where origid=" + rorigid;
+			sqlhand.gpSqlExecuter(sqlstm);
+			guihand.showMessageBox("Contact details updated..");
+
+			itest_useraccessobj.fullname = fulname;
+			itest_useraccessobj.handphone = telnum;
+			itest_useraccessobj.email = emaild;
+			
+			break;
+
+		case 2: // chg password
+			curpwd = kiboo.replaceSingleQuotes(currentpassword.getValue()).trim();
+			newpass = kiboo.replaceSingleQuotes(newpassword.getValue()).trim();
+			confpass = kiboo.replaceSingleQuotes(confirmpassword.getValue()).trim();
+
+			if(curpwd.equals("") || newpass.equals("") || confpass.equals("")) return;
+
+			// check current pwd ..
+			enc_pwd = sechand.als_MD5_Encrypter(curpwd);
+			sql = sqlhand.als_mysoftsql();
+			if(sql == null) { dberror = true; break; }
+			
+			sqlstm = "select password from webreportuser where origid=" + rorigid;
+			krec = sql.firstRow(sqlstm);
+			if(krec == null) { dberror = true; break; }
+
+			inpwd = krec.get("password");
+
+			if(inpwd.equals(enc_pwd)) // current pwd confirmed
+			{
+				if(newpass.equals(confpass)) // newpassword the same as entered.. save it lor
+				{
+					newpwdenc = sechand.als_MD5_Encrypter(newpass);
+					sqlstm = "update webreportuser set password='" + newpwdenc + "' where origid=" + rorigid;
+					sqlhand.gpSqlExecuter(sqlstm);
+					guihand.showMessageBox("Password changed..");
+				}
+				else
+					guihand.showMessageBox("New password does not match");
+			}
+			else
+				guihand.showMessageBox("Current password is not correct");
+
+			sql.close();
+
+			break;
+	}
+
+	if(dberror)
+	{
+		guihand.showMessageBox("DB ERROR: CONTACT ALS IMMEDIATELY");
+		sql.close();
+	}
+
+}
+
+]]>
+</zscript>
+
+<div width="1000px">
+<panel id="profi_panel" title="${MYTITLE} ${MYVERSION}" border="normal" collapsible="true" closable="true" >
+<panelchildren>
+<datebox id="hiddendatebox" format="yyyy-MM-dd" visible="false" onCreate="self.value = new Date()" />
+
+<hbox>
+<grid width="800px">
+	<rows>
+		<row spans=",3">
+			<label value="Company" />
+			<label id="company_name" />
+		</row>
+		<row>
+			<label value="Username" />
+			<label id="username" />
+			<label value="Full name" />
+			<textbox id="fullname" width="99%" />
+		</row>
+		<row>
+			<label value="Telephone" />
+			<textbox id="telephone" width="99%" />
+			<label value="Email" />
+			<textbox id="email" width="99%"/>
+		</row>
+	</rows>
+</grid>
+
+<button label="Update contact details" onClick="profileFuncs(1)" />
+</hbox>
+
+<separator height="3px" />
+
+<hbox>
+<grid width="800px">
+	<rows>
+		<row>
+			<label value="Current password" />
+			<textbox id="currentpassword" type="password" width="99%" />
+			<label value="New password" />
+			<textbox id="newpassword" type="password" width="99%" />
+			<label value="Confirm password" />
+			<textbox id="confirmpassword" type="password" width="99%" />
+		</row>
+		<row spans="6">
+		<label style="font-size:9px">
+(If you are having trouble setting password, please contact ALS for a password-reset)
+</label>
+
+		</row>
+	</rows>
+</grid>
+
+<vbox>
+<button label="Change password" onClick="profileFuncs(2)" />
+</vbox>
+
+</hbox>
+
+<zscript>
+<![CDATA[
+
+compname = sqlhand.getCompanyName(itest_useraccessobj.ar_code);
+company_name.setValue(compname);
+
+username.setValue(itest_useraccessobj.username);
+fullname.setValue(itest_useraccessobj.fullname);
+telephone.setValue(itest_useraccessobj.handphone);
+email.setValue(itest_useraccessobj.email);
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+

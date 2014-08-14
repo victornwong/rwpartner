@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="adminrnd_mod"?>
+<zk>
+<zscript>
+<![CDATA[
+/*
+Version		: 1.0
+Title		: Test checklist - based on folder instead of tests
+Written by	: Victor Wong
+
+Revisions:
+
+14/10/2011: started
+
+onCreate="self.value = new Date()"
+*/
+/*
+import java.util.*;
+import java.text.*;
+import java.lang.Float;
+import groovy.sql.Sql;
+import org.zkoss.zk.ui.*;
+import org.zkoss.zk.zutl.*;
+*/
+
+myincludeid = Executions.getCurrent().getParameter("myid");
+
+/*
+useraccessobj = getUserAccessObject();
+if(useraccessobj == null) Executions.sendRedirect(MAINLOGIN_PAGE);
+
+boolean can_access = check_UsergroupAccess(useraccessobj.origid,SAMPREG_USERGROUP,SAMPREG_ACCESSLEVEL);
+if(!can_access)
+{
+	showAccessDenied_Box(useraccessobj);
+	globalClosePanel(myincludeid);
+}
+
+*/
+
+]]>
+</zscript>
+
+<div width="1000px">
+<panel id="adminrnd_panel" title="admin rnd panel" border="normal" collapsible="true" closable="true">
+<panelchildren style="overflow: auto">
+<datebox id="hiddendatebox" format="yyyy-MM-dd" visible="false" onCreate="self.value = new Date()" />
+
+testing rnd panel... should be working
+
+<zscript>
+<![CDATA[
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+

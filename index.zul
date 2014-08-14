@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="als_portal_login" ?>
+<?page title="Rentwise Partners Login"?>
+<?link rel="shortcut icon" type="image/x-icon" href="/favicon.ico"?>
+<zk xmlns:h="http://www.w3.org/1999/xhtml" xmlns:zk="http://www.zkoss.org/2005/zk">
+<zscript>
+<![CDATA[
+MYTITLE = "Partners Login";
+MYVERSION = "v0.1";
+/*
+File: Main login page for RW partners
+Written by: Victor Wong
+Dated: 12/08/2013
+**knockoff from i-test
+
+*/
+
+import org.victor.*;
+
+Generals kiboo = new Generals();
+SqlFuncs sqlhand = new SqlFuncs();
+GuiFuncs guihand = new GuiFuncs();
+
+itest_userAccessObj itest_useraccessobj = new itest_userAccessObj();
+sechand = new SecurityFuncs(itest_useraccessobj);
+
+/*
+kio = Executions.getCurrent();
+remoadd = kio.getRemoteAddr().substring(0,6);
+if(remoadd.indexOf("172.18") != -1) Executions.sendRedirect("http://172.18.107.15:8080/elb/");
+*/
+
+]]>
+</zscript>
+
+<style>
+	body
+	{
+	padding: 0 0;
+	background-color:#2e3436;
+	background: url('rwimg/RWS_loginsplash_1.png') no-repeat center center fixed;
+	-webkit-background-size: cover;
+	-moz-background-size: cover;
+	-o-background-size: cover;
+	background-size: cover;
+	}
+
+</style>
+
+
+<window id="loginwin" left="50px" top="30px" mode="overlapped">
+<caption label="${MYTITLE} ${MYVERSION}"/>
+<vbox style="padding:10px;background:#729fcf">
+
+<div >
+	<hbox>
+		<label value="Username" style="color:#ffffff" />
+		<separator width="10px" />
+		<textbox id="tb_username" width="150px" />
+	</hbox>
+	<separator height="3px" />
+	<hbox>
+		<label value="Password" style="color:#ffffff" />
+		<separator width="13px" />
+		<textbox id="tb_password" type="password" width="150px" onOk="loginToSystem()" />
+	</hbox>
+	<button id="loginbutt" label="Login" onClick="loginToSystem()" />	
+</div>
+
+<separator height="5px" />
+<!--
+<div style="background:#2e3436;padding:5px">
+	<h:center>
+		<label multiline="true" style="font-size:9px;color:#ffffff" >
+		&#169;2013 Rentwise Sdn Bhd -vW
+
+		</label>
+	</h:center>
+</div>
+-->
+
+<zscript>
+<![CDATA[
+
+// onOK for tb_password
+class pwd_tb_Listener implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		loginToSystem();
+	}
+}
+tb_password.addEventListener("onOK",new pwd_tb_Listener());
+
+void loginToSystem()
+{
+	tmp_username = kiboo.replaceSingleQuotes(tb_username.getValue());
+	tmp_password = kiboo.replaceSingleQuotes(tb_password.getValue());
+	todaydate = kiboo.todayISODateString();
+	if(tmp_username.equals("") || tmp_password.equals("")) return;
+	enc_pwd = sechand.als_MD5_Encrypter(tmp_password);
+
+	if(!sechand.itest_checkUserAccess(tmp_username,enc_pwd,tmp_password,itest_useraccessobj))
+	{
+		// 04/12/2012: log invalid login - new table itest_SystemAudit
+		//sqlhand.itest_addAuditTrail("LOGIN","Unsuccessful-try login to the system (" + tmp_username + ")", itest_useraccessobj.username, todaydate, "NOCODE");
+		guihand.showMessageBox("Invalid login..");
+		return;
+	}
+
+	loginwin.setVisible(false);
+	sechand.itest_setUserAccessObj(mainprogram, itest_useraccessobj);
+
+	// reset user access object, we only hide the login window, when it's visible again, all should be cleared.
+	tb_username.setValue("");
+	tb_password.setValue("");
+
+	// 04/12/2012: log successful login - new table itest_SystemAudit
+	//sqlhand.itest_addAuditTrail("LOGIN","Successful login to the system (" + tmp_username + ")", itest_useraccessobj.username, todaydate, itest_useraccessobj.ar_code);
+
+	mainprogram.setSrc("partner_main.zul");
+
+} // end of loginToSystem()
+
+/*
+All codes written by Victor Wong
+*/
+
+
+]]>
+</zscript>
+
+</vbox>
+</window>
+
+<div>
+<include id="mainprogram" />
+</div>
+</zk>

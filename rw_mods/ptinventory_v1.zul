@@ -1,0 +1,562 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="partner_ivnet_mod"?>
+<zk>
+<zscript src="../rwglobal/rwglobaldefs.zs" />
+<zscript src="../rwglobal/rwsqlfuncs.zs" />
+<zscript>
+<![CDATA[
+MYTITLE = "Parts Inventory Tracking";
+MYVERSION = "0.1d";
+MYID = "partnerinvn_pan";
+/*
+Title		: Outsource-partner inventory tracking
+Written by	: Victor Wong
+
+22/11/2013: started
+
+*/
+import java.util.*;
+import java.text.*;
+import org.apache.poi.hssf.usermodel.*;
+import org.victor.*;
+SecurityFuncs sechand = new SecurityFuncs();
+itest_useraccessobj = sechand.itest_getUserAccessObject();
+if(itest_useraccessobj == null) Executions.sendRedirect("index.zul");
+myincludeid = Executions.getCurrent().getParameter("myid");
+
+Generals kiboo = new Generals();
+ListboxHandler lbhand = new ListboxHandler();
+SqlFuncs sqlhand = new SqlFuncs();
+GuiFuncs guihand = new GuiFuncs();
+LookupFuncs luhand = new LookupFuncs();
+GridHandler gridhand = new GridHandler();
+
+SimpleDateFormat dtf2 = new SimpleDateFormat("yyyy-MM-dd");
+
+glob_warehouse = itest_useraccessobj.branch;
+glob_sel_cat = "";
+glob_sel_partsreq = "";
+glob_sel_reqstat = "";
+
+String[] getDistinctItemCats()
+{
+	sqlstm = "select distinct category from rw_partner_stockitems where warehouse='" + glob_warehouse + "' order by category";
+	crs = sqlhand.gpSqlGetRows(sqlstm);
+	if(crs.size() == 0) return;
+	ArrayList kct = new ArrayList();
+	for(d : crs)
+	{
+		kct.add(d.get("category"));
+	}
+	lmk = kiboo.convertArrayListToStringArray(kct);
+	return lmk;
+}
+
+void buttsToggle(boolean iwhat)
+{
+	saverequest_b.setDisabled(iwhat);
+	removeparts_b.setDisabled(iwhat);
+	addparts_b.setDisabled(iwhat);
+	submitreq_b.setDisabled(iwhat);
+}
+
+class itmcatclk implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		isel = event.getReference();
+		glob_sel_cat = lbhand.getListcellItemLabel(isel,0);
+		showItemsByCategory(glob_sel_cat);
+		//additemtoreq_b.setVisible(true);
+	}
+}
+
+void showItemsCategory()
+{
+Object[] itmcat_hds = 
+{
+	new listboxHeaderWidthObj("Categories",true,""),
+};
+
+	Listbox newlb = lbhand.makeVWListbox_Width(itemcats_holder, itmcat_hds, "itemcats_lb", 20);
+	kkl = getDistinctItemCats();
+	lbhand.populateDropdownListbox(itemcats_lb, kkl);
+	newlb.addEventListener("onSelect", new itmcatclk());
+}
+
+class itemclk implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		try {
+		isel = event.getReference();
+//		glob_sel_item = lbhand.getListcellItemLabel(isel,2);
+//		glob_sel_itemname = lbhand.getListcellItemLabel(isel,0);
+		} catch (Exception e) {}
+	}
+}
+
+void showItemsByCategory(String icat)
+{
+Object[] itms_hds = 
+{
+	new listboxHeaderWidthObj("AssetTag",true,""),
+	new listboxHeaderWidthObj("S/Num",true,""),
+	new listboxHeaderWidthObj("Items",true,""),
+	new listboxHeaderWidthObj("Qty",true,"60px"),
+	new listboxHeaderWidthObj("origid",false,""),
+};
+	Listbox newlb = lbhand.makeVWListbox_Width(items_holder, itms_hds, "items_lb", 12);
+	sqlstm = "select origid,item_name,qty,stock_code,serial_no from rw_partner_stockitems " + 
+	"where category='" + icat + "' and warehouse='" + glob_warehouse + "' and qty > 0 order by item_name,stock_code";
+	rcs = sqlhand.gpSqlGetRows(sqlstm);
+	if(rcs.size() == 0) return;
+	newlb.setMultiple(true);
+	newlb.setCheckmark(true);
+	newlb.setMold("paging");
+	newlb.addEventListener("onSelect", new itemclk());
+	for(d : rcs)
+	{
+		ArrayList kabom = new ArrayList();
+		kabom.add( kiboo.checkNullString(d.get("stock_code")) );
+		kabom.add( kiboo.checkNullString(d.get("serial_no")) );
+		kabom.add( kiboo.checkNullString(d.get("item_name")) );
+		kabom.add( d.get("qty").toString() );
+		kabom.add( d.get("origid").toString() );
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhand.insertListItems(newlb,strarray,"false","");
+	}
+}
+
+void showPartsReqMeta(String iwhat)
+{
+	prs = getPartsReq_rec(iwhat);
+	if(prs == null) { guihand.showMessageBox("DBERR: Cannot access parts-request database.."); return; }
+	r_reqid.setValue( prs.get("origid").toString() );
+	r_csv_number.setValue( kiboo.checkNullString(prs.get("csv_no")) );
+	r_somenotes.setValue( kiboo.checkNullString(prs.get("somenotes")) );
+
+	buttsToggle( ( prs.get("status").equals("NEW") ) ? false : true );
+
+	checkMakeItemsGrid();
+	ri = kiboo.checkNullString(prs.get("req_items")).split("~");
+
+	if(ri.length >= 1)
+	{
+		rq = kiboo.checkNullString(prs.get("req_qty")).split("~");
+		rds = kiboo.checkNullString(prs.get("req_desc")).split("~");
+		tr = kiboo.checkNullString(prs.get("toreplace")).split("~");
+
+		for(i=0; i<ri.length; i++) // show them parts
+		{
+			pn = "";
+			try {
+				pn = ri[i];
+			} catch (Exception e) {}
+
+			if(!pn.equals(""))
+			{
+				nrw = new org.zkoss.zul.Row();
+				nrw.setParent(partsreq_rows);
+				gpMakeCheckbox(nrw,"","","");
+
+				gpMakeLabel(nrw, "", pn, "");
+
+				pds = "";
+				try {
+					pds = rds[i];
+				} catch (Exception e) {}
+				gpMakeLabel(nrw, "", pds, "");
+
+				qty = "";
+				try {
+					qty = rq[i];
+				} catch (Exception e) {}
+				gpMakeTextbox(nrw,"",qty,"","99%");
+
+				torp = "";
+				try {
+					torp = tr[i];
+				} catch (Exception e) {}
+				gpMakeTextbox(nrw,"",torp,"","99%");
+			}
+
+		}
+	}
+
+	workarea.setVisible(true);
+}
+
+class preqclk implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		try {
+		isel = event.getReference();
+		glob_sel_partsreq = lbhand.getListcellItemLabel(isel,0);
+		glob_sel_reqstat = lbhand.getListcellItemLabel(isel,3);
+		showPartsReqMeta(glob_sel_partsreq);
+
+		} catch (Exception e) {}
+	}
+}
+
+void showPartsRequests()
+{
+Object[] preqs_hds = 
+{
+	new listboxHeaderWidthObj("ReqID",true,"50px"),
+	new listboxHeaderWidthObj("Dated",true,"60px"),
+	new listboxHeaderWidthObj("CSV",true,""),
+	new listboxHeaderWidthObj("Stat",true,""),
+	new listboxHeaderWidthObj("User",true,""),
+};
+	Listbox newlb = lbhand.makeVWListbox_Width(requests_holder, preqs_hds, "partsreq_lb", 12);
+	sqlstm = "select origid,datecreated,csv_no,status,username from rw_partner_partsreq " +
+	"where warehouse='" + glob_warehouse + "'";
+	rcs = sqlhand.gpSqlGetRows(sqlstm);
+	if(rcs.size() == 0) return;
+	//newlb.setMultiple(true);
+	//newlb.setCheckmark(true);
+	newlb.setMold("paging");
+	newlb.addEventListener("onSelect", new preqclk());
+	for(d : rcs)
+	{
+		ArrayList kabom = new ArrayList();
+		kabom.add( d.get("origid").toString() );
+		kabom.add( dtf2.format(d.get("datecreated")) );
+		kabom.add( kiboo.checkNullString(d.get("csv_no")) );
+		kabom.add( kiboo.checkNullString(d.get("status")) );
+		kabom.add( kiboo.checkNullString(d.get("username")) );
+		strarray = kiboo.convertArrayListToStringArray(kabom);
+		lbhand.insertListItems(newlb,strarray,"false","");
+	}
+}
+
+boolean glob_msg_yesno = false;
+
+void reqFunc(Object iwhat)
+{
+	todaydate =  kiboo.todayISODateTimeString();
+	itype = iwhat.getId();
+	sqlstm = msgtext = "";
+	refresh = glob_msg_yesno = false;
+
+	if(itype.equals("newpartsreq_b"))
+	{
+		sqlstm = "insert into rw_partner_partsreq (datecreated,username,status,warehouse) values " +
+		"('" + todaydate + "','" + itest_useraccessobj.username + "','NEW','" + glob_warehouse + "')";
+		refresh = true;
+	}
+
+	if(itype.equals("saverequest_b"))
+	{
+		if(glob_sel_partsreq.equals("")) return;
+		sqlstm = saveRequestParts(glob_sel_partsreq);
+		refresh = true;
+		//msgtext = "Request items saved..";
+	}
+
+	if(itype.equals("submitreq_b"))
+	{
+		if(glob_sel_partsreq.equals("")) return;
+
+		svnm = kiboo.replaceSingleQuotes( r_csv_number.getValue().trim() );
+
+		if(svnm.equals("")) msgtext = "No service-ticket entered, cannot post..";
+		else
+		if( submitPostRequest(glob_sel_partsreq).equals("") ) msgtext = "No parts to be posted..";
+		else
+			postreq_pop.open(iwhat);
+	}
+
+	if(itype.equals("confirmpost_b"))
+	{
+		svnm = kiboo.replaceSingleQuotes( r_csv_number.getValue().trim() );
+		//reqFunc(saverequest_b);
+		sqlstm += saveRequestParts(glob_sel_partsreq); // last save before posting.. incase dude chg qty
+		sqlstm += submitPostRequest(glob_sel_partsreq);
+		sqlstm += "update rw_partner_partsreq set csv_no='" + svnm + "', status='POST'," +
+		"post_date='" + todaydate + "' where origid=" + glob_sel_partsreq + ";";
+		
+		glob_sel_reqstat = "POST"; // set request stat and toggle butts
+		buttsToggle(true);
+		msgtext = "POSTED";
+		refresh = true;
+	}
+
+	if(itype.equals("additemtoreq_b")) // add selected-parts to request
+	{
+		if( !lbhand.check_ListboxExist_SelectItem(items_holder,"items_lb") ) return;
+		if(glob_sel_partsreq.equals("")) return;
+		partsmutha_pop.close();
+		addPartsToRequest();
+	}
+
+	if(itype.equals("removeparts_b"))
+	{
+		if(glob_sel_partsreq.equals("")) return;
+		removeParts();
+	}
+
+	if(!sqlstm.equals("")) sqlhand.gpSqlExecuter(sqlstm);
+	if(refresh) showPartsRequests();
+	if(!msgtext.equals("")) guihand.showMessageBox(msgtext);
+}
+
+// Parts request handling funcs --
+
+void checkMakeItemsGrid()
+{
+	String[] colws = { "40px", ""     , ""    , "60px", "150px" };
+	String[] colls = { ""    , "Parts", "Desc", "Qty" , "ToReplace" };
+
+	if(partsreq_holder.getFellowIfAny("partsreq_grid") != null) partsreq_grid.setParent(null);
+
+	// always make new grid
+	igrd = new Grid();
+	igrd.setId("partsreq_grid");
+
+	icols = new org.zkoss.zul.Columns();
+	for(i=0;i<colws.length;i++)
+	{
+		ico0 = new org.zkoss.zul.Column();
+		ico0.setWidth(colws[i]);
+		ico0.setLabel(colls[i]);
+		//ico0.setAlign("center");
+		ico0.setStyle("background:#97b83a");
+		ico0.setParent(icols);
+	}
+	icols.setParent(igrd);
+	irows = new org.zkoss.zul.Rows();
+	irows.setId("partsreq_rows");
+	irows.setParent(igrd);
+	igrd.setParent(partsreq_holder);
+}
+
+String submitPostRequest(String prq)
+{
+	retval = "";
+
+	mrws = partsreq_rows.getChildren().toArray();
+	for(i=0; i<mrws.length; i++)
+	{
+		kr = mrws[i].getChildren().toArray();
+		ri = kr[1].getValue();
+		if(!ri.equals(""))
+		{
+			qy = 1;
+			try {
+				qy = Integer.parseInt(kr[3].getValue());
+			} catch (Exception e) { kr[3].setValue("1"); }
+
+			retval += "update rw_partner_stockitems set qty=qty-" + qy + " where stock_code='" + ri +
+			"' and warehouse='" + glob_warehouse + "';";
+		}
+	}
+
+	return retval;
+}
+
+String saveRequestParts(String iwhat)
+{
+	ri = rq = tr = rdes = "";
+	retsql = "";
+
+	mrws = partsreq_rows.getChildren().toArray();
+	for(i=0; i<mrws.length; i++)
+	{
+		kr = mrws[i].getChildren().toArray();
+		ri += kr[1].getValue().trim() + "~" ;
+		rdes += kr[2].getValue().trim() + "~";
+
+		tqy = 1;
+		try {
+			tqy = Integer.parseInt(kr[3].getValue().trim());
+		} catch (Exception e) { kr[3].setValue("1"); }
+
+		rq += tqy.toString() + "~" ;
+		tr += kiboo.replaceSingleQuotes(kr[4].getValue().trim()) + "~" ;
+	}
+	try {
+		ri = ri.substring(0,ri.length()-1);
+		rq = rq.substring(0,rq.length()-1);
+		tr = tr.substring(0,tr.length()-1);
+		rdes = rdes.substring(0,rdes.length()-1);
+	} catch (Exception e) { return ""; }
+
+	svo = kiboo.replaceSingleQuotes( r_csv_number.getValue().trim() );
+	snt = kiboo.replaceSingleQuotes( r_somenotes.getValue().trim() );
+
+	retsql = "update rw_partner_partsreq set csv_no='" + svo + "',somenotes='" + snt + "',req_items='" + ri + "'," +
+	"req_qty='" + rq + "', toreplace='" + tr + "', req_desc='" + rdes + "' where origid=" + iwhat + ";" ;
+
+	return retsql;
+}
+
+void removeParts()
+{
+	mrws = partsreq_rows.getChildren().toArray();
+	for(i=0; i<mrws.length; i++)
+	{
+		kr = mrws[i].getChildren().toArray();
+		if(kr[0].isChecked())
+		{
+			mrws[i].setParent(null);
+		}
+	}
+}
+
+// Util: check if ipartn exist already in grid-row. Can be modded for others
+boolean ptexistinGrid(String ipartn)
+{
+	retval = false;
+	mrws = partsreq_rows.getChildren().toArray();
+	for(i=0; i<mrws.length; i++)
+	{
+		kr = mrws[i].getChildren().toArray();
+		ekn = kr[1].getValue();
+		if(ekn.equals(ipartn))
+		{
+			retval = true;
+			break;
+		}
+	}
+	return retval;
+}
+
+void addPartsToRequest()
+{
+	for( d : items_lb.getSelectedItems() )
+	{
+		ptn = lbhand.getListcellItemLabel(d,0);
+		pdes = lbhand.getListcellItemLabel(d,2);
+		if(!ptexistinGrid(ptn)) // chk for dups in request
+		{
+			nrw = new org.zkoss.zul.Row();
+			nrw.setParent(partsreq_rows);
+			gpMakeCheckbox(nrw,"","","");
+			gpMakeLabel(nrw, "",ptn,"");
+			gpMakeLabel(nrw, "",pdes,"");
+			gpMakeTextbox(nrw,"","1","","99%");
+			gpMakeTextbox(nrw,"","","","99%");
+		}
+	}
+}
+
+]]>
+</zscript>
+
+<popup id="postreq_pop">
+<label value="Posting this request will deduct consigned stocks. Are you sure?" />
+<separator height="3px" />
+
+<hbox>
+	<button id="confirmpost_b" label="YES" onClick="reqFunc(self)" />
+	<button label="NO" onClick="postreq_pop.close()" />
+</hbox>
+
+</popup>
+
+<popup id="partsmutha_pop">
+<div style="background:#e58512; -moz-box-shadow: 4px 5px 7px #000000; -webkit-box-shadow: 4px 5px 7px #000000;
+	box-shadow: 4px 5px 7px #000000;padding:3px;margin:3px">
+
+<separator height="5px" />
+<hbox>
+	<label sclass="subhead2" style=";color:#ffffff" value="Consigned Parts: " />
+	<label sclass="subhead2" style=";color:#ffffff" value="${glob_warehouse}" />
+</hbox>
+<separator height="5px" />
+<hbox>
+	<div id="itemcats_holder" width="250px" />
+	<vbox>
+		<div id="items_holder" width="700px" />
+		<button id="additemtoreq_b" label="Add item(s) to parts-request"
+			style="font-weight:bold" onClick="reqFunc(self)" />
+	</vbox>
+</hbox>
+
+</div>
+</popup>
+
+<style>
+
+.subhead1 {
+	font-size:16px;
+	font-weight:bold;
+	text-shadow: 1px 1px #000000;
+}
+
+.subhead2 {
+	font-size:24px;
+	font-weight:bold;
+	text-shadow: 1px 1px #000000;
+}
+
+</style>
+
+<div width="1000px">
+<panel id="${MYID}" title="${MYTITLE} ${MYVERSION}" border="normal" collapsible="true" closable="true" >
+<panelchildren>
+
+<div style="background:#2e3436; -moz-box-shadow: 4px 5px 7px #000000; -webkit-box-shadow: 4px 5px 7px #000000;
+	box-shadow: 4px 5px 7px #000000;padding:3px;margin:3px" >
+
+<hbox>
+	<button id="newpartsreq_b" label="Create parts request" onClick="reqFunc(self)" />
+	<button id="submitreq_b" style="font-weight:bold;color:#ff0000" label="Post request deduct stock" onClick="reqFunc(self)" />
+</hbox>
+
+<separator height="3px" />
+
+<hbox>
+	<div id="requests_holder" width="450px" />
+
+	<div id="workarea" visible="false">
+		<grid>
+			<columns>
+				<column width="60px" />
+				<column />
+				<column width="60px" />
+				<column />
+			</columns>
+			<rows>
+				<row>
+					<label value="ReqID" />
+					<label id="r_reqid" />
+					<label value="CSV#" />
+					<textbox id="r_csv_number" width="99%" />
+				</row>
+				<row spans="1,3">
+					<label value="Notes" />
+					<textbox id="r_somenotes" multiline="true" width="99%" height="60px" />
+				</row>
+			</rows>
+		</grid>
+		<separator height="2px" />
+		<hbox>
+			<button id="saverequest_b" label="SAVE REQUEST" style="font-weight:bold" onClick="reqFunc(self)" />
+			<button id="addparts_b" label="Add parts to request" onClick="partsmutha_pop.open(self)" />
+			<button id="removeparts_b" label="Remove parts" onClick="reqFunc(self)" />
+		</hbox>
+		<separator height="3px" />
+		<div id="partsreq_holder" />
+	</div>
+</hbox>
+
+</div>
+
+<zscript>
+<![CDATA[
+
+showItemsCategory();
+showPartsRequests();
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+
