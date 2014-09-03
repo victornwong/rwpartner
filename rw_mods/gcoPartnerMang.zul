@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="gcopartnermanmod"?>
+<zk>
+<zscript src="../rwglobal/rwglobaldefs.zs" />
+<zscript src="../rwglobal/rwsqlfuncs.zs" />
+<zscript src="../rwglobal/uploadDocu_v1.zs" />
+<zscript src="../rwglobal/uploadedWorksheet_v1.zs" />
+<zscript>
+<![CDATA[
+MYTITLE = "GCO - Partner Side";
+MYVERSION = "v0.1";
+MYPANEL = "gcoparnerside";
+/*
+@Title GCO management Partner side
+@Author Victor Wong
+@Since 03/09/2014
+
+@Notes
+03/09/2014: Outsource audit-form will be "OSA"+GCO-id = OSA523
+
+*/
+import java.text.*;
+import java.util.*;
+import java.io.*;
+import org.apache.poi.hssf.usermodel.*;
+//import org.apache.poi.xssf.usermodel.*;
+import org.apache.poi.ss.util.*;
+import org.apache.poi.ss.usermodel.*;
+import org.zkoss.util.media.*;
+import org.victor.*;
+
+SecurityFuncs sechand = new SecurityFuncs();
+os_useraccessobj = sechand.itest_getUserAccessObject();
+if(os_useraccessobj == null) Executions.sendRedirect("index.zul");
+myincludeid = Executions.getCurrent().getParameter("myid");
+Generals kiboo = new Generals(); ListboxHandler lbhand = new ListboxHandler();
+SqlFuncs sqlhand = new SqlFuncs(); GuiFuncs guihand = new GuiFuncs();
+DMSFuncs dmshand = new DMSFuncs(); GridHandler gridhand = new GridHandler();
+
+ADTPREFIX = "OSA";
+selected_file_id = glob_sel_gco = "";
+glob_sel_outsouce = "1"; // default 1=EIS
+
+void checkCreateCollectGrid() // Knockoff from goodsCollection_funcs.zul
+{
+	if(pitems_holder.getFellowIfAny("pickitems_grid") != null) return;
+	grd = new Grid();
+	grd.setMold("paging");
+	grd.setPageSize(20);
+
+	grd.setId("pickitems_grid");
+	rws = new org.zkoss.zul.Rows();
+	rws.setId("items_rows");
+	rws.setParent(grd);
+
+	String[] colhed = { "Asset Tag","S/N","Description","Collect" };
+	kcols = new org.zkoss.zul.Columns();
+	kcols.setParent(grd);
+	for(i=0;i<colhed.length;i++)
+	{
+		kcl = new org.zkoss.zul.Column();
+		kcl.setLabel(colhed[i]);
+		kcl.setParent(kcols);
+	}
+	grd.setParent(pitems_holder);
+}
+
+void showGCOMeta(String iwhat) // knockoff from goodsCollection_funcs.zul
+{
+	grc = getGCO_rec(iwhat);
+	if(grc == null) return;
+
+	if(pitems_holder.getFellowIfAny("pickitems_grid") != null) pickitems_grid.setParent(null);
+	checkCreateCollectGrid();
+
+	ktg = sqlhand.clobToString(grc.get("items_code"));
+	if(!ktg.equals(""))
+	{
+		itag = sqlhand.clobToString(grc.get("items_code")).split("~");
+		idsc = sqlhand.clobToString(grc.get("items_desc")).split("~");
+		isn = sqlhand.clobToString(grc.get("items_sn")).split("~");
+		icol = kiboo.checkNullString(grc.get("items_coll")).split("~");
+
+		f9 = "font-size:9px";
+
+		for(i=0; i<itag.length; i++)
+		{
+			nrw = new org.zkoss.zul.Row();
+			nrw.setParent(items_rows);
+
+			tmsn = "";
+			try { tmsn = isn[i]; } catch (Exception e) {}
+
+			tmds = "";
+			try { tmds = idsc[i]; } catch (Exception e) {}
+
+			gpMakeLabel(nrw, "", itag[i], "");
+			gpMakeLabel(nrw, "", tmsn, f9);
+			klb = gpMakeLabel(nrw, "", tmds, f9);
+			klb.setMultiline(true);
+
+			ckb = gpMakeCheckbox(nrw,"","","");
+			if(icol[i].equals("1")) ckb.setChecked(true);
+		}
+	}
+
+	fillDocumentsList(documents_holder, ADTPREFIX, iwhat); // show 'em outsourcer uploaded audit-forms for GCO
+}
+
+Object[] gcolbhds = 
+{
+	new listboxHeaderWidthObj("fc6",false,""),
+	new listboxHeaderWidthObj("GCO",true,"60px"),
+	new listboxHeaderWidthObj("Dated",true,"70px"),
+	new listboxHeaderWidthObj("Customer",true,""),
+	new listboxHeaderWidthObj("DueDate",true,"70px"),
+};
+
+class gcolbClick implements org.zkoss.zk.ui.event.EventListener
+{
+	public void onEvent(Event event) throws UiException
+	{
+		isel = event.getReference();
+		glob_sel_gco = lbhand.getListcellItemLabel(isel,1);
+		gco_tit.setValue(glob_sel_gco);
+		showGCOMeta(glob_sel_gco);
+	}
+}
+gcoclkier = new gcolbClick();
+
+void showPartnerGCOList(Div idiv, String ilbid)
+{
+	Listbox newlb = lbhand.makeVWListbox_Width(idiv, gcolbhds, ilbid, 3);
+
+	sqlstm = "select origid,datecreated,res_date,customer_name,fc6_custid from rw_goodscollection " +
+	"where opartner is not null order by origid desc";
+
+	rcs = sqlhand.gpSqlGetRows(sqlstm);
+	if(rcs.size() == 0) return;
+	newlb.setRows(20); newlb.setMold("paging");
+	newlb.addEventListener("onSelect", gcoclkier);
+	ArrayList kabom = new ArrayList();
+	String[] fl = { "fc6_custid","origid","datecreated","customer_name" };
+	for(d : rcs)
+	{
+		popuListitems_Data(kabom,fl,d);
+		rdd = kiboo.checkNullDate(d.get("res_date"),"");
+		if(rdd.equals("1900-01-01")) rdd = "";
+		kabom.add(rdd);
+		lbhand.insertListItems(newlb,kiboo.convertArrayListToStringArray(kabom),"false","");
+		kabom.clear();
+	}
+}
+
+void saveGCO_collected(String iwhat)
+{
+	if(pitems_holder.getFellowIfAny("pickitems_grid") == null) return;
+	cds = items_rows.getChildren().toArray();
+	itik = "";
+
+	for(i=0; i<cds.length; i++)
+	{
+		c1 = cds[i].getChildren().toArray();
+		itik += ( c1[3].isChecked() ) ? "1~" : "0~";
+	}
+	try { itik = itik.substring(0,itik.length()-1); } catch (Exception e) {}
+
+	sqlstm = "update rw_goodscollection set items_coll='" + itik + "' where origid=" + iwhat;
+	sqlhand.gpSqlExecuter(sqlstm);
+	guihand.showMessageBox("GCO items collect flag set");
+}
+
+]]>
+</zscript>
+
+<!-- update file description popup -->
+<popup id="updatefiledesc_popup">
+<groupbox width="400px">
+	<caption id="updatefiledesc_label" />
+	<label value="Description" style="font-size:9px" />
+	<textbox id="update_file_description" multiline="true" height="70px" width="99%" style="font-size:9px" />
+	<separator height="3px" />
+	<hbox>
+		<button label="Update" style="font-size:9px" onClick="updateFileDescription(documents_holder,ADTPREFIX,glob_sel_gco)" />
+		<button label="Close" style="font-size:9px" onClick="updatefiledesc_popup.close()" />
+	</hbox>
+</groupbox>
+
+</popup>
+
+<!-- upload a file popup -->
+<popup id="uploadfile_popup">
+<groupbox width="400px">
+<caption label="Upload a file" />
+	<grid>
+		<rows>
+			<row>
+				<label value="Filename" style="font-size:9px" />
+				<textbox id="fileupl_file_title" width="200px" style="font-size:9px" />
+			</row>
+			<row>
+				<label value="Description" style="font-size:9px" />
+				<textbox id="fileupl_file_description" multiline="true" height="60px" width="200px" style="font-size:9px" />
+			</row>
+		</rows>
+	</grid>
+</groupbox>
+<separator height="3px" />
+<hbox>
+	<button label="Upload" upload="true" onUpload="uploadFile(documents_holder,ADTPREFIX,glob_sel_gco,event.getMedias())" />
+	<button label="Close" onClick="uploadfile_popup.close()" style="font-size:9px" />
+</hbox>
+</popup>
+
+<!-- ADDED 19/08/2013: to authorize viewing of file **KNOCKOFF from servicetickets_v1.zul** -->
+<popup id="authorizeviewfile_pop">
+<div>
+	<label value="Authorization code" />
+	<textbox id="authorizeview_tb" type="password" />
+	<button label="View" onClick="authorize_viewFile(somewindows,authorizeview_tb.getValue())" />
+</div>
+</popup>
+
+<style src="/real-world.css" />
+
+<div width="1000px">
+<panel id="${MYPANEL}" title="${MYTITLE} ${MYVERSION}" border="normal" collapsible="true" closable="true" >
+<panelchildren style="background:#40362F">
+<separator height="3px" />
+
+<hbox>
+	<div id="gcosholder" width="500px" sclass="shadowbox" style="background:#606B2D" />
+	<vbox>
+		<hbox>
+			<label value="GCO:" sclass="subhead1" />
+			<label id="gco_tit" sclass="subhead1" />
+		</hbox>
+		<div id="pitems_holder" sclass="shadowbox" style="background:#606B2D" />
+		<hbox>
+			<button label="Save collection status" style="font-size:9px;font-weight:bold" onClick="saveGCO_collected(glob_sel_gco)" />
+		</hbox>
+
+		<div sclass="shadowbox" style="background:#2e3436">
+			<label sclass="subhead1">Audit-forms / Attachments</label>
+			<separator height="3px" />
+			<hbox>
+				<button id="uploaddoc_btn" label="Upload file" style="font-size:9px" onClick="showUploadPopup(ADTPREFIX,glob_sel_gco)" />
+				<button id="viewdoc_btn" label="View file" style="font-size:9px" onClick="authorizeviewfile_pop.open(self)" />
+				<button id="editdoc_btn" label="Update" style="font-size:9px" onClick="updatefiledesc_popup.open(editdoc_btn)" />
+				<button id="deletedoc_btn" label="Delete" visible="false" style="font-size:9px" onClick="deleteFile(documents_holder,ADTPREFIX,glob_sel_gco)" />
+			</hbox>
+			<separator height="3px" />
+			<div id="documents_holder" />
+		</div>
+
+	</vbox>
+
+</hbox>
+
+<div id="somewindows" />
+<div id="kasiexport" />
+
+<zscript>
+<![CDATA[
+
+showPartnerGCOList(gcosholder,"gco_lb");
+
+//if(os_useraccessobj.username.equals("metest")) deletedoc_btn.setVisible(true); // HARDCODED
+//if(os_useraccessobj.username.equals("eis")) admin_b.setVisible(true); // HARDCODED admin-user for EIS (TODO CHG PWD)
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+

@@ -109,10 +109,11 @@ void deleteFile(Div idiv, String iprefix, String idocudx)
 	if(os_useraccessobj.accesslevel < 9) { guihand.showMessageBox("Only admin can do hard-delete"); return; }
 
 	if (Messagebox.show("This is a hard-delete..", "Are you sure?", 
-		Messagebox.YES | Messagebox.NO, Messagebox.QUESTION) !=  Messagebox.YES) return;
+		Messagebox.YES | Messagebox.NO, Messagebox.QUESTION) != Messagebox.YES) return;
 
 	sqlstm = "delete from DocumentTable where origid=" + selected_file_id;
-	dmshand.dmsgpSqlExecuter(sqlstm);
+	alert(sqlstm);
+	//dmshand.dmsgpSqlExecuter(sqlstm);
 	fillDocumentsList(idiv,iprefix,idocudx); // refresh
 }
 

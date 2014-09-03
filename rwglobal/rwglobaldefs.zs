@@ -1,3 +1,6 @@
+import java.util.*;
+import java.text.*;
+import java.math.*;
 import groovy.sql.Sql;
 import org.zkoss.zk.ui.*;
 
@@ -38,6 +41,14 @@ SMTP_SERVER = "";
 ELABMAN_EMAIL = "";
 
 MAINPROCPATH = ".";
+
+SimpleDateFormat dtf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+SimpleDateFormat dtf2 = new SimpleDateFormat("yyyy-MM-dd");
+SimpleDateFormat yearonly = new SimpleDateFormat("yyyy");
+DecimalFormat nf2 = new DecimalFormat("#0.00");
+DecimalFormat nf3 = new DecimalFormat("###,##0.00");
+DecimalFormat nf = new DecimalFormat("###,##0.00");
+DecimalFormat nf0 = new DecimalFormat("#");
 
 // GUI types
 GUI_PANEL = 1;

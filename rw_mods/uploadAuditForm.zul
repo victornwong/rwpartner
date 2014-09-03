@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?page id="upauditformmod"?>
+<zk>
+<zscript src="../rwglobal/rwglobaldefs.zs" />
+<zscript src="../rwglobal/rwsqlfuncs.zs" />
+<zscript src="../rwglobal/uploadDocu_v1.zs" />
+<zscript src="../rwglobal/uploadedWorksheet_v1.zs" />
+<zscript>
+<![CDATA[
+MYTITLE = "Upload Audit-Form";
+MYVERSION = "v0.1";
+MYPANEL = "uploadadtpanel";
+/*
+Title		: Upload audit-form by partner
+Written by	: Victor Wong
+Dated		: 18/08/2014
+
+*/
+import java.text.*;
+import java.util.*;
+import java.io.*;
+import org.apache.poi.hssf.usermodel.*;
+//import org.apache.poi.xssf.usermodel.*;
+import org.apache.poi.ss.util.*;
+import org.apache.poi.ss.usermodel.*;
+import org.zkoss.util.media.*;
+import org.victor.*;
+Generals kiboo = new Generals();
+ListboxHandler lbhand = new ListboxHandler();
+SqlFuncs sqlhand = new SqlFuncs();
+GuiFuncs guihand = new GuiFuncs();
+DMSFuncs dmshand = new DMSFuncs();
+GridHandler gridhand = new GridHandler();
+SecurityFuncs sechand = new SecurityFuncs();
+os_useraccessobj = sechand.itest_getUserAccessObject();
+if(os_useraccessobj == null) Executions.sendRedirect("index.zul");
+myincludeid = Executions.getCurrent().getParameter("myid");
+
+ADTPREFIX = "OSA";
+selected_file_id = "";
+glob_sel_outsouce = "1"; // default 1=EIS
+
+]]>
+</zscript>
+
+<!-- update file description popup -->
+<popup id="updatefiledesc_popup">
+<groupbox width="400px">
+	<caption id="updatefiledesc_label" />
+	<label value="Description" style="font-size:9px" />
+	<textbox id="update_file_description" multiline="true" height="70px" width="99%" style="font-size:9px" />
+	<separator height="3px" />
+	<hbox>
+		<button label="Update" style="font-size:9px" onClick="updateFileDescription(documents_holder,ADTPREFIX,glob_sel_outsouce)" />
+		<button label="Close" style="font-size:9px" onClick="updatefiledesc_popup.close()" />
+	</hbox>
+</groupbox>
+
+</popup>
+
+<!-- upload a file popup -->
+<popup id="uploadfile_popup">
+<groupbox width="400px">
+<caption label="Upload a file" />
+	<grid>
+		<rows>
+			<row>
+				<label value="Filename" style="font-size:9px" />
+				<textbox id="fileupl_file_title" width="200px" style="font-size:9px" />
+			</row>
+			<row>
+				<label value="Description" style="font-size:9px" />
+				<textbox id="fileupl_file_description" multiline="true" height="60px" width="200px" style="font-size:9px" />
+			</row>
+		</rows>
+	</grid>
+</groupbox>
+<separator height="3px" />
+<hbox>
+	<button label="Upload" upload="true" onUpload="uploadFile(documents_holder,ADTPREFIX,glob_sel_outsouce,event.getMedias())" />
+	<button label="Close" onClick="uploadfile_popup.close()"  style="font-size:9px" />
+</hbox>
+</popup>
+
+<!-- ADDED 19/08/2013: to authorize viewing of file **KNOCKOFF from servicetickets_v1.zul** -->
+<popup id="authorizeviewfile_pop">
+<div>
+	<label value="Authorization code" />
+	<textbox id="authorizeview_tb" type="password" />
+	<button label="View" onClick="authorize_viewFile(somewindows,authorizeview_tb.getValue())" />
+</div>
+</popup>
+
+<style src="/real-world.css" />
+
+<div width="1000px">
+<panel id="${MYPANEL}" title="${MYTITLE} ${MYVERSION}" border="normal" collapsible="true" closable="true" >
+<panelchildren>
+<separator height="8px" />
+
+<div sclass="shadowbox" style="background:#2e3436">
+	<!-- <label sclass="subhead1">Documents / Attachments</label> -->
+	<separator height="3px" />
+	<hbox>
+		<button id="uploaddoc_btn" label="Upload file" style="font-size:9px" onClick="showUploadPopup(ADTPREFIX,glob_sel_outsouce)" />
+		<button id="viewdoc_btn" label="View file" style="font-size:9px" onClick="authorizeviewfile_pop.open(self)" />
+		<!-- <button id="editdoc_btn" label="Update" style="font-size:9px" onClick="updatefiledesc_popup.open(editdoc_btn)" /> -->
+		<button id="deletedoc_btn" label="Delete" visible="false" style="font-size:9px" onClick="deleteFile(documents_holder,ADTPREFIX,glob_sel_outsouce)" />
+	</hbox>
+	<separator height="3px" />
+	<div id="documents_holder" />
+
+</div>
+
+<div id="somewindows" />
+<div id="kasiexport" />
+
+<zscript>
+<![CDATA[
+
+fillDocumentsList(documents_holder,ADTPREFIX,"1"); // show 'em outsourcer uploaded audit-forms
+if(os_useraccessobj.username.equals("metest")) deletedoc_btn.setVisible(true); // HARDCODED
+
+//if(os_useraccessobj.username.equals("eis")) admin_b.setVisible(true); // HARDCODED admin-user for EIS (TODO CHG PWD)
+
+]]>
+</zscript>
+</panelchildren>
+</panel>
+</div>
+</zk>
+

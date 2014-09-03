@@ -4,7 +4,7 @@
 <zscript>
 <![CDATA[
 MYTITLE = "RW Partner Access Portal";
-MYVERSION = "0.2";
+MYVERSION = "0.2.1";
 /*
 File : RW partner access portal
 Written by : Victor Wong
@@ -12,6 +12,8 @@ Dated : 12/08/2013
 
 *NOTES*
 knockoff from itest
+
+18/08/2014: add butt for audit-form submission by partner
 
 */
 import org.victor.*;
@@ -64,6 +66,14 @@ void runItestModule(int itype)
 			runstr = "rw_mods/ptinventory_v1.zul";
 			runstrid = "ptinvent";
 			break;
+		case 14:
+			runstr = "rw_mods/uploadAuditForm.zul";
+			runstrid = "upda";
+			break;
+		case 15: // GCO modu
+			runstr = "rw_mods/gcoPartnerMang.zul";
+			runstrid = "gmdo";
+			break;
 	}
 
 	if(!runstr.equals("")) activateModule(mainPlayground,"workbox",runstr,runstrid,"",itest_useraccessobj);
@@ -88,6 +98,8 @@ void testme()
 ]]>
 </zscript>
 
+<style src="/real-world.css" />
+
 <style>
 	body
 	{
@@ -100,7 +112,6 @@ void testme()
 	}
 
 </style>
-
 
 <image src="/rwimg/partnermainbanner_1.jpg" />
 <!--
@@ -120,9 +131,9 @@ background: url('rwimg/RWS_loginsplash_1.png') no-repeat center center fixed;
 -->
 
 <div style="background:${MAINBARCOLOR};padding:3px" width="992px">
-<label style="font-size:18px;font-weight:bold;color:#FFFFFF">${MYTITLE}</label>
-<label style="font-size:9px;color:#FFFFFF">${MYVERSION}</label>
-<label style="font-size:9px;color:#FFFFFF">(${glob_warehouse})</label>
+<label sclass="subhead1" >${MYTITLE}</label>
+<label sclass="k9b">${MYVERSION}</label>
+<label sclass="k9b">(${glob_warehouse})</label>
 <space spacing="400px" />
 </div>
 
@@ -132,6 +143,8 @@ background: url('rwimg/RWS_loginsplash_1.png') no-repeat center center fixed;
 	<button label="Messages" onClick="runItestModule(2)" disabled="true" visible="false" />
 	<button label="Parts inventory" onClick="runItestModule(3)" disabled="true" visible="false" />
 	<button label="User profile" onClick="runItestModule(10)" />
+	<button label="GCO" onClick="runItestModule(15)" />
+	<button label="Upload audit-form" onClick="runItestModule(14)" />
 	<button label="News" onClick="runItestModule(12)" disabled="true" visible="false" />
 	<button label="Help" onClick="runItestModule(11)" disabled="true" visible="false" />
 	<button id="partsinvent_b" label="Parts Inventory" onClick="runItestModule(13)" disabled="true" visible="false" />

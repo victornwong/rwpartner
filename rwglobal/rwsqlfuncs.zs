@@ -14,6 +14,38 @@ Object[] mergeArray(Object[] lst1, Object[] lst2)
 	return c;
 }
 
+void popuListitems_Data(ArrayList ikb, String[] ifl, Object ir)
+{
+	for(i=0; i<ifl.length; i++)
+	{
+		try {
+		kk = ir.get(ifl[i]);
+		if(kk == null) kk = "";
+		else
+			if(kk instanceof Date) kk = dtf2.format(kk);
+		else
+			if(kk instanceof Integer) kk = nf0.format(kk);
+		else
+			if(kk instanceof BigDecimal)
+			{
+				rt = kk.remainder(BigDecimal.ONE);
+				if(rt.floatValue() != 0.0)
+					kk = nf2.format(kk);
+				else
+					kk = nf0.format(kk);
+			}
+		else
+			if(kk instanceof Double) kk = nf2.format(kk);
+		else
+			if(kk instanceof Float) kk = kk.toString();
+		else
+			if(kk instanceof Boolean) { wi = (kk) ? "Y" : "N"; kk = wi; }
+
+		ikb.add( kk );
+		} catch (Exception e) {}
+	}
+}
+
 void blindTings(Object iwhat, Object icomp)
 {
 	itype = iwhat.getId();
@@ -224,4 +256,9 @@ Object getRentalItems_build(String iwhat)
 	return sqlhand.gpSqlFirstRow(sqlstm);
 }
 
+Object getGCO_rec(String iwhat)
+{
+	sqlstm = "select * from rw_goodscollection where origid=" + iwhat;
+	return sqlhand.gpSqlFirstRow(sqlstm);
+}
 
